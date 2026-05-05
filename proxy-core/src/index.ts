@@ -19,6 +19,7 @@ export interface BotEvent {
   transformationApplied: boolean;
   timestamp: string;
   ip: string;
+  fingerprint: string | null;
 }
 
 export default {
@@ -51,6 +52,7 @@ export default {
             transformationApplied: false,
             timestamp: detection.timestamp,
             ip: detection.ip,
+            fingerprint: detection.fingerprint,
           })
         );
         return new Response(rendered, {
@@ -70,22 +72,21 @@ export default {
       upstreamUrl.port = upstream.port;
       const botHeaders = new Headers(request.headers);
       botHeaders.delete("accept-encoding");
-      const originResponse = await fetch(new Request(upstreamUrl.toString(), { headers: botHeaders, method: request.method }));
-      const transformed = await transformer.transform(
-        originResponse,
-        detection.botId
+      const originResponse = await fetch(
+        new Request(upstreamUrl.toString(), { headers: botHeaders, method: request.method })
       );
+      const transformed = await transformer.transform(originResponse, detection.botId);
 
       const event: BotEvent = {
         botId: detection.botId,
         botName: detection.botName,
         confidence: detection.confidence,
         url: request.url,
-        pageType:
-          transformed.headers.get("x-llm-proxy-page-type") ?? "unknown",
+        pageType: transformed.headers.get("x-llm-proxy-page-type") ?? "unknown",
         transformationApplied: true,
         timestamp: detection.timestamp,
         ip: detection.ip,
+        fingerprint: detection.fingerprint,
       };
       ctx.waitUntil(publishBotEvent(event));
 

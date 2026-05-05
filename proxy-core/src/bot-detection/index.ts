@@ -2,6 +2,7 @@ import { parseUserAgent } from "./ua-parser";
 import { calculateConfidence, ConfidenceFactors } from "./confidence-scorer";
 import { isHoneypotRequest, HoneypotHit } from "./honeypot";
 import { isIpInCidr, KvStore } from "./ip-updater";
+import { verifyPtr } from "./ptr-verifier";
 
 export interface DetectionResult {
   isBot: boolean;
@@ -12,11 +13,15 @@ export interface DetectionResult {
   verified: boolean;
   ip: string;
   userAgent: string;
+  fingerprint: string | null;
   timestamp: string;
 }
 
 export class BotDetectionEngine {
-  constructor(private readonly kv: KvStore) {}
+  constructor(
+    private readonly kv: KvStore,
+    private readonly fetcher: typeof fetch = fetch
+  ) {}
 
   async detect(request: Request): Promise<DetectionResult> {
     const url = new URL(request.url);
@@ -24,6 +29,9 @@ export class BotDetectionEngine {
     const ip =
       request.headers.get("cf-connecting-ip") ??
       (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+    const fingerprint =
+      request.headers.get("cf-ja4-fingerprint") ??
+      request.headers.get("cf-ja3-fingerprint");
     const timestamp = new Date().toISOString();
 
     if (isHoneypotRequest(url.pathname)) {
@@ -36,6 +44,7 @@ export class BotDetectionEngine {
         verified: false,
         ip,
         userAgent: ua,
+        fingerprint,
         timestamp,
       };
     }
@@ -51,17 +60,21 @@ export class BotDetectionEngine {
         verified: false,
         ip,
         userAgent: ua,
+        fingerprint,
         timestamp,
       };
     }
 
     const profile = uaResult.botProfile;
-    const ipInRange = await this.checkIpInRange(ip, profile.id);
+    const [ipInRange, ptrVerified] = await Promise.all([
+      this.checkIpInRange(ip, profile.id),
+      verifyPtr(ip, profile.expectedPtrDomain, this.fetcher),
+    ]);
 
     const factors: ConfidenceFactors = {
       uaMatch: true,
       ipInRange,
-      ptrVerified: false,
+      ptrVerified,
       behaviorNormal: true,
     };
 
@@ -76,6 +89,7 @@ export class BotDetectionEngine {
       verified: confidence.verified,
       ip,
       userAgent: ua,
+      fingerprint,
       timestamp,
     };
   }
