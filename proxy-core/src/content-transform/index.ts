@@ -1,5 +1,5 @@
 import { parseHtml } from "./html-parser";
-import { classifyPage } from "./page-classifier";
+import { classifyPage, parseServerTimingPageType, PageType } from "./page-classifier";
 import { injectSchema } from "./schema-injector";
 import { atomizeQa } from "./qa-atomizer";
 import { extractEntities } from "./entity-extractor";
@@ -19,7 +19,8 @@ export class ContentTransformEngine {
     if (!contentType.includes("text/html")) return response;
 
     const html = await response.text();
-    const result = this.transformHtml(html, response.url, _botId);
+    const pageTypeHint = parseServerTimingPageType(response.headers.get("server-timing"));
+    const result = this.transformHtml(html, response.url, _botId, pageTypeHint);
 
     const headers = new Headers(response.headers);
     headers.delete("content-encoding");
@@ -36,10 +37,11 @@ export class ContentTransformEngine {
   transformHtml(
     html: string,
     url: string,
-    _botId: string | null
+    _botId: string | null,
+    pageTypeHint?: PageType | null
   ): TransformResult {
     const tree = parseHtml(html);
-    const pageType = classifyPage(tree, url);
+    const pageType = pageTypeHint ?? classifyPage(tree, url);
     const entities = extractEntities(tree);
 
     let transformed = injectSchema(html, tree, pageType, url);

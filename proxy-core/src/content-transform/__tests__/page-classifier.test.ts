@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyPage } from "../page-classifier";
+import { classifyPage, parseServerTimingPageType } from "../page-classifier";
 import { parseHtml } from "../html-parser";
 
 const bare = (body = "") =>
@@ -45,5 +45,49 @@ describe("classifyPage", () => {
     expect(classifyPage(bare(), "https://example.com/random-page")).toBe(
       "unknown"
     );
+  });
+});
+
+describe("parseServerTimingPageType", () => {
+  it("maps Shopify index to landing", () => {
+    expect(parseServerTimingPageType('pageType;desc="index"')).toBe("landing");
+  });
+
+  it("maps Shopify product to product", () => {
+    expect(parseServerTimingPageType('pageType;desc="product"')).toBe("product");
+  });
+
+  it("maps Shopify collection to product", () => {
+    expect(parseServerTimingPageType('pageType;desc="collection"')).toBe("product");
+  });
+
+  it("maps Shopify article to blog", () => {
+    expect(parseServerTimingPageType('pageType;desc="article"')).toBe("blog");
+  });
+
+  it("maps Shopify blog to blog", () => {
+    expect(parseServerTimingPageType('pageType;desc="blog"')).toBe("blog");
+  });
+
+  it("maps Shopify cart to unknown", () => {
+    expect(parseServerTimingPageType('pageType;desc="cart"')).toBe("unknown");
+  });
+
+  it("parses pageType from a full server-timing header with multiple entries", () => {
+    const header =
+      'processing;dur=535;desc="gc:19", db;dur=199, render;dur=148, pageType;desc="index", servedBy;desc="td29"';
+    expect(parseServerTimingPageType(header)).toBe("landing");
+  });
+
+  it("returns null for unrecognised pageType value", () => {
+    expect(parseServerTimingPageType('pageType;desc="checkout"')).toBeNull();
+  });
+
+  it("returns null when pageType entry is absent", () => {
+    expect(parseServerTimingPageType('render;dur=148, db;dur=199')).toBeNull();
+  });
+
+  it("returns null for null input", () => {
+    expect(parseServerTimingPageType(null)).toBeNull();
   });
 });

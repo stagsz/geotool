@@ -9,6 +9,25 @@ export type PageType =
   | "landing"
   | "unknown";
 
+const SERVER_TIMING_PAGE_TYPE_MAP: Record<string, PageType> = {
+  index: "landing",
+  product: "product",
+  collection: "product",
+  blog: "blog",
+  article: "blog",
+  page: "unknown",
+  cart: "unknown",
+  search: "unknown",
+  "404": "unknown",
+};
+
+export function parseServerTimingPageType(header: string | null): PageType | null {
+  if (!header) return null;
+  const match = header.match(/pageType;desc="([^"]+)"/i);
+  if (!match) return null;
+  return SERVER_TIMING_PAGE_TYPE_MAP[match[1].toLowerCase()] ?? null;
+}
+
 interface Signal {
   type: PageType;
   weight: number;

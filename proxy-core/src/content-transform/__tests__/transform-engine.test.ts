@@ -44,6 +44,15 @@ describe("ContentTransformEngine.transformHtml", () => {
 
     expect(result.pageType).toBe("unknown");
   });
+
+  it("pageTypeHint overrides classifier result", () => {
+    const html = "<html><head><title>Store</title></head><body><button>Add to cart</button></body></html>";
+    const withoutHint = engine.transformHtml(html, "https://example.com/product/x", null);
+    expect(withoutHint.pageType).toBe("product");
+
+    const withHint = engine.transformHtml(html, "https://example.com/product/x", null, "landing");
+    expect(withHint.pageType).toBe("landing");
+  });
 });
 
 describe("ContentTransformEngine.transform (Response API)", () => {
@@ -65,5 +74,18 @@ describe("ContentTransformEngine.transform (Response API)", () => {
 
     expect(result.headers.get("x-llm-proxy-processed")).toBe("true");
     expect(result.headers.get("x-llm-proxy-page-type")).toBeDefined();
+  });
+
+  it("uses server-timing pageType hint over classifier", async () => {
+    const html = "<html><head><title>Store</title></head><body><button>Add to cart</button></body></html>";
+    const response = new Response(html, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "server-timing": 'render;dur=148, pageType;desc="index", servedBy;desc="td29"',
+      },
+    });
+    const result = await engine.transform(response, "gptbot");
+
+    expect(result.headers.get("x-llm-proxy-page-type")).toBe("landing");
   });
 });
