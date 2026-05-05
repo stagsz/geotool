@@ -3,8 +3,8 @@ main = "src/index.ts"
 compatibility_date = "2024-03-01"
 
 kv_namespaces = [
-  { binding = "BOT_REGISTRY", id = "placeholder_bot_registry_id", preview_id = "placeholder_bot_registry_preview" },
-  { binding = "RENDER_CACHE", id = "placeholder_render_cache_id", preview_id = "placeholder_render_cache_preview" }
+  { binding = "BOT_REGISTRY", id = "586b1acd1c474e8d9606041c448da0cc", preview_id = "987b83a7c0214f3ba118b51d512b0d57" },
+  { binding = "RENDER_CACHE", id = "480da1e93baf4f438db81e63d156909b", preview_id = "72fc4adda65d4581a729db26a870d58d" }
 ]
 
 [triggers]
