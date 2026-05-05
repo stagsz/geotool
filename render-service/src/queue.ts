@@ -4,6 +4,16 @@ import type { RenderCache } from "./cache";
 
 const QUEUE_NAME = "render";
 
+async function captureEtag(url: string, cache: RenderCache): Promise<void> {
+  try {
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    const etag = res.headers.get("etag");
+    if (etag) await cache.setEtag(url, etag);
+  } catch {
+    // best-effort — non-fatal if origin doesn't support HEAD or ETag
+  }
+}
+
 export class RenderQueue {
   private readonly queue: Queue;
   private readonly connection: { host: string; port: number };
@@ -26,6 +36,7 @@ export class RenderQueue {
         if (cached !== null) return;
         const result = await renderer.render(url);
         await cache.set(url, result.html);
+        await captureEtag(url, cache);
       },
       { connection: this.connection, concurrency: 4 }
     );

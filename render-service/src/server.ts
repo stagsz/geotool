@@ -3,9 +3,27 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RenderCache } from "./cache";
 import type { RenderQueue } from "./queue";
 
+async function checkEtagStale(
+  url: string,
+  cache: RenderCache,
+  fetcher: typeof fetch
+): Promise<boolean> {
+  const storedEtag = await cache.getEtag(url);
+  if (!storedEtag) return false;
+  try {
+    const res = await fetcher(url, { method: "HEAD", signal: AbortSignal.timeout(2000) });
+    const currentEtag = res.headers.get("etag");
+    if (!currentEtag) return false;
+    return currentEtag !== storedEtag;
+  } catch {
+    return false;
+  }
+}
+
 export function createRenderServer(
   cache: RenderCache,
-  queue: RenderQueue
+  queue: RenderQueue,
+  fetcher: typeof fetch = fetch
 ): ReturnType<typeof createServer> {
   return createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const parsed = new URL(req.url ?? "/", "http://localhost");
@@ -26,6 +44,14 @@ export function createRenderServer(
 
       const cached = await cache.get(url);
       if (cached !== null) {
+        const stale = await checkEtagStale(url, cache, fetcher);
+        if (stale) {
+          await cache.invalidate(url);
+          await queue.add(url);
+          res.writeHead(202);
+          res.end("Accepted");
+          return;
+        }
         res.writeHead(200, { "content-type": "text/html" });
         res.end(cached);
         return;
