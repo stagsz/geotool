@@ -1,0 +1,18 @@
+name = "llm-proxy-core"
+main = "src/index.ts"
+compatibility_date = "2024-03-01"
+
+kv_namespaces = [
+  { binding = "BOT_REGISTRY", id = "placeholder_bot_registry_id", preview_id = "placeholder_bot_registry_preview" },
+  { binding = "RENDER_CACHE", id = "placeholder_render_cache_id", preview_id = "placeholder_render_cache_preview" }
+]
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+[vars]
+RENDER_SERVICE_URL = "http://localhost:3001"
+UPSTREAM_URL = "https://baraband.se"
+
+[build]
+command = ""

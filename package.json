@@ -1,0 +1,16 @@
+{
+  "name": "llm-proxy-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "proxy-core",
+    "data-layer",
+    "dashboard",
+    "evals",
+    "render-service"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}
