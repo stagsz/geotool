@@ -181,11 +181,15 @@ Replace `placeholder_bot_registry_preview` with the real `preview_id` from `wran
 Spoof an IP that falls within the seeded CIDR range so the confidence score reaches the ≥70 threshold (UA match = 30 pts, IP match = 40 pts):
 
 ```bash
-# Verified bot → content transform path (render-service down or cache miss)
-curl.exe -s http://127.0.0.1:8787 \ -H "User-Agent: GPTBot/1.0" \ -H "x-forwarded-for: 74.7.175.130" \ -D - -o response.html
+# Bash / Git Bash
+curl -s http://127.0.0.1:8787 -H "User-Agent: GPTBot/1.0" -H "x-forwarded-for: 74.7.175.130" -D headers.txt -o response.html
+grep "x-llm-proxy" headers.txt
+```
 
-# Verify transform headers in the response
-grep "x-llm-proxy" <<< "$(cat -)"
+```powershell
+# PowerShell
+curl.exe -s http://127.0.0.1:8787 -H "User-Agent: GPTBot/1.0" -H "x-forwarded-for: 74.7.175.130" -D headers.txt -o response.html
+Select-String "x-llm-proxy" headers.txt
 ```
 
 Expected response headers on a cache miss:
