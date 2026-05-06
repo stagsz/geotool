@@ -1,39 +1,151 @@
 # LLM Proxy Agency Platform
 
-Edge-deployed middleware that intercepts AI crawler traffic, transforms web content for optimal AI consumption, and tracks LLM citation performance across major platforms (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, CCBot).
+When someone asks ChatGPT "where can I buy a watch strap in Sweden?", the answer comes from content GPTBot crawled weeks ago. If that content was a wall of JavaScript-rendered noise — cookie banners, nav menus, Shopify boilerplate — the model either ignores it or cites it poorly.
+
+This platform sits transparently in front of a client's website. Human visitors see nothing different. AI crawlers get a structured, schema-annotated version of each page: clean headings, Q&A pairs extracted from content, schema.org markup, and entity data the model can quote directly. The goal is to increase the rate at which AI systems cite the client accurately.
+
+It also records every crawler hit, what it saw, and what transformation was applied — giving clients the first half of a feedback loop. The second half (citation monitoring across ChatGPT, Perplexity, Claude) is the next build phase.
+
+---
+
+## Live Infrastructure
+
+| Component | Runtime | URL |
+|---|---|---|
+| `proxy-core` | Cloudflare Workers (edge, global) | `llm-proxy-core.staffan-greisz.workers.dev` |
+| `render-service` | Node.js on Railway (EU West) | `geotool-production-4198.up.railway.app` |
+| Redis | Railway managed | internal to render-service |
+
+---
 
 ## How It Works
 
 ```
-AI Crawler → Cloudflare Worker
-               ├─ Identify bot (UA + IP range, confidence ≥70/100)
-               ├─ Honeypot check (10 trap paths → log + 200 OK)
-               ├─ Cache hit → return pre-rendered HTML immediately
-               └─ Cache miss → fetch origin → inject schema + Q&A markup → return
-                                    ↓
-                             Queue Puppeteer render for next request
+AI Crawler hits client domain
+        │
+        ▼
+Cloudflare Worker (proxy-core)
+        │
+        ├─ Bot fingerprint check (UA + IP range + PTR DNS)
+        │     Confidence score: UA=30pts  IP=40pts  PTR=20pts  Behaviour=10pts
+        │     Threshold: ≥70 to be "verified"
+        │
+        ├─ Honeypot? ──→ 200 OK + log hit (10 invisible trap paths)
+        │
+        ├─ Verified bot
+        │     ├─ Cache hit  ──→ pre-rendered HTML served instantly
+        │     │                 x-llm-proxy-cache: HIT
+        │     └─ Cache miss ──→ fetch origin → transform → serve
+        │                       x-llm-proxy-processed: true
+        │                       x-llm-proxy-page-type: product|blog|faq|...
+        │                       x-llm-proxy-entities: <count>
+        │
+        └─ Human ──→ passthrough, zero modification
+                │
+                └─ Bot event POST'd to render-service /events (non-blocking)
+
+render-service (Railway)
+        ├─ /render   — check Redis cache → queue Puppeteer job → return HTML
+        ├─ /events   — receive bot hit events → store in Redis list
+        ├─ /stats    — aggregate events by bot, page type, URL, day
+        └─ /health   — readiness probe
 ```
 
-Human visitors are passed through with zero modification.
+---
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `proxy-core` | Cloudflare Worker — bot detection and content transformation at the edge |
-| `render-service` | Node.js service — JavaScript pre-rendering via Puppeteer + BullMQ + Redis |
-| `data-layer` | Analytics pipeline — event batching, ClickHouse writes, citation tracking, anomaly detection |
-| `dashboard` | React client dashboard — real-time crawler feed and citation analytics |
-| `evals` | Evaluation suite — binary pass/fail criteria across all platform phases |
+| Package | Runtime | Purpose |
+|---------|---------|---------|
+| `proxy-core` | Cloudflare Workers | Bot detection + content transformation at the edge |
+| `render-service` | Node.js | JS pre-renderer (Puppeteer + BullMQ) + event store |
+| `data-layer` | Node.js | Analytics pipeline: EventPublisher, ClickHouseWriter, CitationTracker, AnomalyDetector |
+| `dashboard` | React | Client-facing analytics UI (in progress) |
+| `evals` | Node.js | Binary pass/fail evaluation suite |
+
+---
+
+## Bot Detection
+
+Multi-factor confidence scoring on every request:
+
+| Signal | Points | Method |
+|---|---|---|
+| User-Agent match | 30 | Pattern-matched against known bot registry |
+| IP range | 40 | CIDR lookup in KV, auto-refreshed every 6h from vendor endpoints |
+| PTR record | 20 | Reverse DNS via Cloudflare DoH, verifies PTR ends with expected domain |
+| Behaviour | 10 | Reserved — always true currently |
+| **Threshold** | **≥70** | Below this = unverified = passthrough |
+
+JA3/JA4 TLS fingerprints are captured on every verified hit and logged with the event.
+
+---
+
+## Content Transformation
+
+Applied to verified bots on cache miss:
+
+1. **HTML parsing** — raw HTML → structured content tree
+2. **Page classification** — heuristic scoring (URL signals + content signals) overridden by `server-timing: pageType;desc="..."` when the origin provides it (Shopify, Cloudflare, etc.)
+3. **Schema.org injection** — Article / Product / FAQPage / Organization based on classified page type
+4. **Q&A atomization** — H2/H3 headings that look like questions wrapped with `schema.org/Question` markup
+5. **Entity extraction** — brand names, product names, prices, locations tagged
+
+---
+
+## Event Pipeline
+
+Every verified bot hit fires a non-blocking POST to `render-service/events`:
+
+```json
+{
+  "botId": "gptbot",
+  "botName": "GPTBot",
+  "confidence": 70,
+  "url": "https://client.com/products/strap-red",
+  "pageType": "product",
+  "transformationApplied": true,
+  "timestamp": "2026-05-06T21:18:26.000Z",
+  "ip": "74.7.175.130",
+  "fingerprint": "abc123..."
+}
+```
+
+Events are stored as a Redis list (capped at 10,000 entries). The `/stats` endpoint aggregates them:
+
+```
+GET /stats?days=30&hostname=client.com
+
+{
+  "total": 142,
+  "since": "2026-04-06T...",
+  "byBot": { "gptbot": 98, "claudebot": 44 },
+  "byPageType": { "product": 110, "blog": 32 },
+  "topPages": [{ "url": "...", "count": 23 }, ...],
+  "byDay": [{ "date": "2026-05-01", "count": 12 }, ...]
+}
+```
+
+ClickHouse is the intended long-term store. The `data-layer` package has `ClickHouseWriter` ready — swap the Redis sink once a ClickHouse instance is provisioned.
+
+---
+
+## Pre-Rendering
+
+- **Puppeteer** with `domcontentloaded` wait strategy (15s timeout)
+- **BullMQ** queue with concurrency=4
+- **Cache key:** SHA256 of normalised URL, **TTL:** 4 hours
+- **ETag diffing:** on cache hit, HEAD the origin and compare ETags — invalidate and re-queue if content has changed
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
-- Redis running locally (render-service uses it for job queue and cache)
-- Cloudflare account with Workers enabled (deployment only — not needed for local dev)
-- Chrome/Chromium binary (render-service production only)
+- Redis (local dev) or Railway Redis addon (production)
+- Cloudflare account with Workers enabled
 
 ### Install
 
@@ -43,165 +155,112 @@ npm install
 
 ### Local development
 
-Three services need to run together. Start them in order:
-
-**1. Redis** (required by render-service)
 ```bash
+# Terminal 1 — Redis
 redis-server
+
+# Terminal 2 — render-service
+cd render-service && npm run build && npm start
+
+# Terminal 3 — Cloudflare Worker
+cd proxy-core && npm run dev
 ```
 
-**2. render-service** — JS pre-renderer on port 3001
-```bash
-cd render-service
-npm run build
-npm start
-```
+Worker starts on `http://localhost:8787`, proxies to `https://baraband.se` by default.
 
-**3. proxy-core** — Cloudflare Worker dev server
-```bash
-cd proxy-core
-npm run dev
-```
-
-The Worker starts on `http://localhost:8787` and proxies to `https://baraband.se` by default (configured in `wrangler.toml`). To point it at a different origin:
+### Tests and lint
 
 ```bash
-npx wrangler dev --var UPSTREAM_URL:https://other-origin.se
-```
-
-> Note: `--upstream` is not a valid wrangler flag — use `--var UPSTREAM_URL:...` instead.
-
-### Tests and type-checking
-
-```bash
-# All workspaces
-npm test
-npm run lint
-
-# Single package (run from the package directory)
-npm test
-npm run lint
+npm test        # all workspaces
+npm run lint    # tsc --noEmit across all workspaces
 
 # Single test file
 npx vitest run src/path/to/file.test.ts
 ```
 
-### Environment variables
+---
+
+## Environment Variables
 
 **render-service:**
+
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `REDIS_HOST` | `localhost` | Redis host |
-| `REDIS_PORT` | `6379` | Redis port |
+|---|---|---|
+| `REDIS_URL` | — | Full Redis URL (Railway injects this automatically) |
+| `REDIS_HOST` | `localhost` | Fallback host when REDIS_URL is not set |
+| `REDIS_PORT` | `6379` | Fallback port |
 | `PORT` | `3001` | HTTP server port |
-| `CHROME_PATH` | — | Path to Chrome binary (required in production) |
+| `CHROME_PATH` | — | Chromium binary path (set in Dockerfile to `/usr/bin/chromium`) |
 
-**proxy-core (`wrangler.toml` `[vars]`):**
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RENDER_SERVICE_URL` | `http://localhost:3001` | URL of the render-service instance |
-| `UPSTREAM_URL` | `https://baraband.se` | Origin to proxy human traffic to |
+**proxy-core (`wrangler.toml`):**
 
-KV namespace bindings (`BOT_REGISTRY`, `RENDER_CACHE`) use placeholder IDs locally — replace with real IDs before deploying.
+| Variable | Description |
+|---|---|
+| `RENDER_SERVICE_URL` | render-service base URL |
+| `UPSTREAM_URL` | Default origin for human passthrough |
 
-## Architecture
+**KV namespaces:**
 
-### Bot Detection
+| Binding | Purpose |
+|---|---|
+| `BOT_REGISTRY` | IP range data per bot ID, auto-refreshed every 6h |
+| `RENDER_CACHE` | Reserved for edge-cached rendered pages |
+| `CLIENT_REGISTRY` | Per-hostname client config (upstreamUrl, renderServiceUrl) |
 
-Multi-factor confidence scoring (0–100 scale):
-- **User-Agent match** (+30 points) — validated against known bot profiles
-- **IP range verification** (+40 points) — checked against live registry data (auto-updated every 6 hours)
-- **Verified threshold:** ≥70 points
-
-### Content Transformation
-
-Applied to verified bots on cache miss:
-1. HTML parsed into a content tree
-2. Page type classified (Blog, Product, Service, FAQ, etc.)
-3. Schema.org markup injected (Article / Product / FAQ / Organization)
-4. Question-pattern headings atomized into Q&A pairs
-5. Entities extracted and tagged
-
-Response headers carry `x-llm-proxy-page-type`, `x-llm-proxy-entities`, `x-llm-proxy-cache`.
-
-### Pre-Rendering
-
-- BullMQ job queue with concurrency of 4 Puppeteer workers
-- 15-second render timeout, waits for `domcontentloaded`
-- Cache key: SHA256 of normalised URL, TTL: 4 hours
-- `GET /render?url=<url>` — returns cached or freshly rendered HTML
-- `GET /health` — readiness check
-
-### Data Pipeline
-
-- `EventPublisher` — buffers events and flushes at 1,000 events or 100ms (whichever comes first)
-- `ClickHouseWriter` — batch inserts via an injectable `ClickHouseClient` interface
-- `CitationTracker` — records citation events per client, computes citation rate
-- `AnomalyDetector` — flags IP range changes >10% and citation rate drops ≥20%
+---
 
 ## Deployment
 
 ```bash
-# Deploy Cloudflare Worker
-cd proxy-core && npm run deploy
+# Cloudflare Worker
+cd proxy-core && npx wrangler deploy
 
-# render-service — build and run on a VPS
-cd render-service && npm run build && CHROME_PATH=/usr/bin/chromium npm start
+# render-service — Railway auto-deploys from main branch push
+git push origin master:main
 ```
 
-## Performance Targets
+---
 
-| Metric | Target |
-|--------|--------|
-| Edge latency (cached) | p95 < 150ms |
-| Cache hit rate | > 85% after 24h warm-up |
-| Bot detection accuracy | ≥ 97% |
-| Event publication latency | < 5ms (non-blocking) |
-| Uptime SLA | 99.9% |
+## Multi-Tenancy
 
+The worker reads the request `host` header on every request and looks up `client-config:<hostname>` in `CLIENT_REGISTRY` KV. If a config exists, it overrides `UPSTREAM_URL` and `RENDER_SERVICE_URL` for that request.
 
-## Local Testing
-
-### Populate KV with real IP ranges
-
-In local dev, the Worker extracts the request IP from `cf-connecting-ip` or `x-forwarded-for`. Neither is set automatically by wrangler, so `127.0.0.1/32` placeholder ranges do not work — the IP resolves to an empty string and never matches. Use real published ranges instead.
+To onboard a client:
 
 ```bash
-cd proxy-core
-
-# GPTBot (OpenAI) — from https://openai.com/gptbot-ranges.txt
-npx wrangler kv key put --namespace-id=placeholder_bot_registry_preview --local "ip-ranges:gptbot" \
-  '["132.196.86.0/24","172.182.202.0/25","172.182.204.0/24","172.182.207.0/25","172.182.214.0/24","172.182.215.0/24","20.125.66.80/28","20.171.206.0/24","20.171.207.0/24","4.227.36.0/25","52.230.152.0/24","74.7.175.128/25","74.7.227.0/25","74.7.227.128/25","74.7.228.0/25","74.7.230.0/25","74.7.241.0/25","74.7.241.128/25","74.7.242.0/25","74.7.243.128/25","74.7.244.0/25"]'
+npx wrangler kv key put --remote \
+  --namespace-id=<CLIENT_REGISTRY_ID> \
+  "client-config:client-domain.com" \
+  '{"upstreamUrl":"https://origin.client-domain.com","renderServiceUrl":"https://geotool-production-4198.up.railway.app"}'
 ```
 
-Replace `placeholder_bot_registry_preview` with the real `preview_id` from `wrangler.toml` once you have a Cloudflare account.
+Then point the client's DNS to the worker (Cloudflare for SaaS or worker route on their zone).
 
-### Test bot detection and content transform
+---
 
-Spoof an IP that falls within the seeded CIDR range so the confidence score reaches the ≥70 threshold (UA match = 30 pts, IP match = 40 pts):
+## Testing Bot Detection
 
-```bash
-# Bash / Git Bash
-curl -s http://127.0.0.1:8787 -H "User-Agent: GPTBot/1.0" -H "x-forwarded-for: 74.7.175.130" -D headers.txt -o response.html
-grep "x-llm-proxy" headers.txt
-```
+Spoof a GPTBot request with an IP in the published OpenAI CIDR range (UA=30pts + IP=40pts = 70pts, verified):
 
 ```powershell
-# PowerShell
-curl.exe -s http://127.0.0.1:8787 -H "User-Agent: GPTBot/1.0" -H "x-forwarded-for: 74.7.175.130" -D headers.txt -o response.html
-Select-String "x-llm-proxy" headers.txt
+curl.exe -s https://llm-proxy-core.staffan-greisz.workers.dev/ `
+  -H "User-Agent: Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)" `
+  -H "x-forwarded-for: 74.7.175.130" -I
 ```
 
-Expected response headers on a cache miss:
-```
-x-llm-proxy-processed: true
-x-llm-proxy-page-type: <blog|product|service|faq|landing|unknown>
-x-llm-proxy-entities: <count>
-```
+In production, `cf-connecting-ip` takes precedence over `x-forwarded-for` — spoofing only works in local `wrangler dev`.
 
-Expected on a render-service cache hit:
-```
-x-llm-proxy-cache: HIT
-```
+---
 
-A request without the `x-forwarded-for` header scores 30/100 (UA only) and is treated as an unverified bot — it will pass through to the origin unmodified.
+## Build Phases
+
+| Phase | Status |
+|---|---|
+| 00 Foundation | ✅ Done |
+| 01 Bot Detection | ✅ Done |
+| 02 JS Pre-Renderer | ✅ Deployed on Railway |
+| 03 Content Transform | ✅ Done |
+| 04 Data Pipeline | 🔄 Events wired, ClickHouse pending |
+| 05 Dashboard | 🔲 Not started |
+| 06 Production Hardening | 🔲 Not started |
+| 07 First Client | 🔲 Not started |
