@@ -4,6 +4,72 @@ import type { RenderCache } from "./cache";
 import type { RenderQueue } from "./queue";
 import type { EventStore } from "./event-store";
 
+interface StoredEvent {
+  botId?: string | null;
+  botName?: string | null;
+  url?: string;
+  pageType?: string;
+  timestamp?: string;
+}
+
+interface StatsResponse {
+  total: number;
+  since: string;
+  byBot: Record<string, number>;
+  byPageType: Record<string, number>;
+  topPages: Array<{ url: string; count: number }>;
+  byDay: Array<{ date: string; count: number }>;
+}
+
+function computeStats(
+  raw: unknown[],
+  days: number,
+  hostname?: string
+): StatsResponse {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  let events = (raw as StoredEvent[]).filter(
+    (e) => typeof e.timestamp === "string" && e.timestamp >= since
+  );
+  if (hostname) {
+    events = events.filter((e) => {
+      try {
+        return new URL(e.url ?? "").hostname === hostname;
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  const byBot: Record<string, number> = {};
+  const byPageType: Record<string, number> = {};
+  const pageCount: Record<string, number> = {};
+  const dayCount: Record<string, number> = {};
+
+  for (const e of events) {
+    const bot = e.botId ?? "unknown";
+    byBot[bot] = (byBot[bot] ?? 0) + 1;
+    const pt = e.pageType ?? "unknown";
+    byPageType[pt] = (byPageType[pt] ?? 0) + 1;
+    if (e.url) pageCount[e.url] = (pageCount[e.url] ?? 0) + 1;
+    const day = (e.timestamp ?? "").slice(0, 10);
+    if (day) dayCount[day] = (dayCount[day] ?? 0) + 1;
+  }
+
+  return {
+    total: events.length,
+    since,
+    byBot,
+    byPageType,
+    topPages: Object.entries(pageCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([url, count]) => ({ url, count })),
+    byDay: Object.entries(dayCount)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count })),
+  };
+}
+
 async function checkEtagStale(
   url: string,
   cache: RenderCache,
@@ -62,6 +128,21 @@ export function createRenderServer(
       await queue.add(url);
       res.writeHead(202);
       res.end("Accepted");
+      return;
+    }
+
+    if (parsed.pathname === "/stats" && req.method === "GET") {
+      if (!eventStore) {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Event store not available" }));
+        return;
+      }
+      const days = Math.max(1, parseInt(parsed.searchParams.get("days") ?? "30", 10));
+      const hostname = parsed.searchParams.get("hostname") ?? undefined;
+      const events = await eventStore.list(10_000);
+      const stats = computeStats(events, days, hostname);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(stats));
       return;
     }
 

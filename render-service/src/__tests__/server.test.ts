@@ -25,7 +25,12 @@ describe("createRenderServer", () => {
   let server: ReturnType<typeof createRenderServer>;
   let port: number;
 
-  const startServer = async (fetcher?: typeof fetch, eventStore?: { push: ReturnType<typeof vi.fn> }) => {
+  const makeEventStore = (events: unknown[] = []) => ({
+    push: vi.fn().mockResolvedValue(undefined),
+    list: vi.fn().mockResolvedValue(events),
+  });
+
+  const startServer = async (fetcher?: typeof fetch, eventStore?: { push: ReturnType<typeof vi.fn>; list?: ReturnType<typeof vi.fn> }) => {
     server = createRenderServer(
       cache as unknown as RenderCache,
       queue as unknown as RenderQueue,
@@ -113,6 +118,45 @@ describe("createRenderServer", () => {
       const res = await fetch(`http://localhost:${port}/render?url=https://example.com`);
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("<html>cached</html>");
+    });
+  });
+
+  describe("GET /stats", () => {
+    const sampleEvents = [
+      { botId: "gptbot", botName: "GPTBot", url: "https://example.com/products/a", pageType: "product", timestamp: new Date().toISOString() },
+      { botId: "gptbot", botName: "GPTBot", url: "https://example.com/products/b", pageType: "product", timestamp: new Date().toISOString() },
+      { botId: "claudebot", botName: "ClaudeBot", url: "https://other.com/about", pageType: "about", timestamp: new Date().toISOString() },
+    ];
+
+    it("returns 200 with aggregated stats", async () => {
+      await startServer(undefined, makeEventStore(sampleEvents));
+      const res = await fetch(`http://localhost:${port}/stats`);
+      expect(res.status).toBe(200);
+      const body = await res.json() as { total: number; byBot: Record<string, number> };
+      expect(body.total).toBe(3);
+      expect(body.byBot["gptbot"]).toBe(2);
+      expect(body.byBot["claudebot"]).toBe(1);
+    });
+
+    it("filters by hostname", async () => {
+      await startServer(undefined, makeEventStore(sampleEvents));
+      const res = await fetch(`http://localhost:${port}/stats?hostname=example.com`);
+      const body = await res.json() as { total: number };
+      expect(body.total).toBe(2);
+    });
+
+    it("returns 503 when no event store is configured", async () => {
+      await startServer();
+      const res = await fetch(`http://localhost:${port}/stats`);
+      expect(res.status).toBe(503);
+    });
+
+    it("returns empty stats when no events match the time window", async () => {
+      const oldEvent = { botId: "gptbot", url: "https://example.com/", pageType: "landing", timestamp: "2020-01-01T00:00:00Z" };
+      await startServer(undefined, makeEventStore([oldEvent]));
+      const res = await fetch(`http://localhost:${port}/stats?days=7`);
+      const body = await res.json() as { total: number };
+      expect(body.total).toBe(0);
     });
   });
 
