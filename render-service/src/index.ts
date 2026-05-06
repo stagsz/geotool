@@ -3,6 +3,7 @@ import { RenderCache } from "./cache";
 import { PageRenderer } from "./renderer";
 import { RenderQueue } from "./queue";
 import { createRenderServer } from "./server";
+import { EventStore } from "./event-store";
 
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
@@ -29,7 +30,8 @@ async function main(): Promise<void> {
   const queue = new RenderQueue(connection);
   queue.startWorker(renderer, cache);
 
-  const server = createRenderServer(cache, queue);
+  const eventStore = new EventStore(redis);
+  const server = createRenderServer(cache, queue, fetch, eventStore);
   server.listen(PORT, () => {
     console.log(`[render-service] listening on port ${PORT}`);
   });

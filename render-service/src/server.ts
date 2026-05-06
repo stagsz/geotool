@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RenderCache } from "./cache";
 import type { RenderQueue } from "./queue";
+import type { EventStore } from "./event-store";
 
 async function checkEtagStale(
   url: string,
@@ -23,7 +24,8 @@ async function checkEtagStale(
 export function createRenderServer(
   cache: RenderCache,
   queue: RenderQueue,
-  fetcher: typeof fetch = fetch
+  fetcher: typeof fetch = fetch,
+  eventStore?: EventStore
 ): ReturnType<typeof createServer> {
   return createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const parsed = new URL(req.url ?? "/", "http://localhost");
@@ -60,6 +62,27 @@ export function createRenderServer(
       await queue.add(url);
       res.writeHead(202);
       res.end("Accepted");
+      return;
+    }
+
+    if (parsed.pathname === "/events" && req.method === "POST") {
+      const body = await new Promise<string>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (c: Buffer) => chunks.push(c));
+        req.on("end", () => resolve(Buffer.concat(chunks).toString()));
+        req.on("error", reject);
+      });
+      try {
+        const events = JSON.parse(body);
+        if (Array.isArray(events) && eventStore) {
+          await eventStore.push(events);
+        }
+        res.writeHead(204);
+        res.end();
+      } catch {
+        res.writeHead(400);
+        res.end("Invalid JSON");
+      }
       return;
     }
 

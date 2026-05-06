@@ -60,7 +60,7 @@ export default {
             timestamp: detection.timestamp,
             ip: detection.ip,
             fingerprint: detection.fingerprint,
-          })
+          }, renderServiceUrl)
         );
         return new Response(rendered, {
           status: 200,
@@ -95,7 +95,7 @@ export default {
         ip: detection.ip,
         fingerprint: detection.fingerprint,
       };
-      ctx.waitUntil(publishBotEvent(event));
+      ctx.waitUntil(publishBotEvent(event, renderServiceUrl));
 
       return transformed;
     }
@@ -119,10 +119,19 @@ export default {
 
 async function publishBotEvent(
   event: BotEvent,
-  sink?: (e: BotEvent) => void
+  eventsUrl?: string
 ): Promise<void> {
-  if (sink) {
-    sink(event);
+  if (eventsUrl) {
+    try {
+      await fetch(`${eventsUrl}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify([event]),
+        signal: AbortSignal.timeout(2000),
+      });
+    } catch {
+      console.log("[BOT_EVENT_FALLBACK]", JSON.stringify(event));
+    }
   } else {
     console.log("[BOT_EVENT]", JSON.stringify(event));
   }

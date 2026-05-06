@@ -25,11 +25,12 @@ describe("createRenderServer", () => {
   let server: ReturnType<typeof createRenderServer>;
   let port: number;
 
-  const startServer = async (fetcher?: typeof fetch) => {
+  const startServer = async (fetcher?: typeof fetch, eventStore?: { push: ReturnType<typeof vi.fn> }) => {
     server = createRenderServer(
       cache as unknown as RenderCache,
       queue as unknown as RenderQueue,
-      fetcher
+      fetcher,
+      eventStore as never
     );
     port = await new Promise<number>((resolve) => {
       server.listen(0, () => resolve((server.address() as { port: number }).port));
@@ -112,6 +113,41 @@ describe("createRenderServer", () => {
       const res = await fetch(`http://localhost:${port}/render?url=https://example.com`);
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("<html>cached</html>");
+    });
+  });
+
+  describe("POST /events", () => {
+    it("returns 204 and calls eventStore.push with parsed events", async () => {
+      const eventStore = { push: vi.fn().mockResolvedValue(undefined) };
+      await startServer(undefined, eventStore);
+      const events = [{ botId: "gptbot", url: "https://example.com" }];
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(events),
+      });
+      expect(res.status).toBe(204);
+      expect(eventStore.push).toHaveBeenCalledWith(events);
+    });
+
+    it("returns 204 without error when no eventStore is provided", async () => {
+      await startServer();
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify([{ botId: "gptbot" }]),
+      });
+      expect(res.status).toBe(204);
+    });
+
+    it("returns 400 for invalid JSON", async () => {
+      await startServer();
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "not-json",
+      });
+      expect(res.status).toBe(400);
     });
   });
 });
