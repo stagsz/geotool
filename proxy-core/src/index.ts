@@ -2,9 +2,11 @@ import { BotDetectionEngine } from "./bot-detection";
 import { ContentTransformEngine } from "./content-transform";
 import { updateIpRegistries } from "./bot-detection/ip-updater";
 import { fetchRendered } from "./render-client";
+import { getClientConfig } from "./client-registry";
 
 export interface Env {
   BOT_REGISTRY: KVNamespace;
+  CLIENT_REGISTRY: KVNamespace;
   RENDER_CACHE: KVNamespace;
   RENDER_SERVICE_URL: string;
   UPSTREAM_URL: string;
@@ -28,6 +30,11 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ): Promise<Response> {
+    const hostname = new URL(request.url).hostname;
+    const clientConfig = await getClientConfig(hostname, env.CLIENT_REGISTRY);
+    const upstreamUrl = clientConfig?.upstreamUrl ?? env.UPSTREAM_URL;
+    const renderServiceUrl = clientConfig?.renderServiceUrl ?? env.RENDER_SERVICE_URL;
+
     const botEngine = new BotDetectionEngine(env.BOT_REGISTRY);
     const detection = await botEngine.detect(request);
 
@@ -40,7 +47,7 @@ export default {
     }
 
     if (detection.verified) {
-      const rendered = await fetchRendered(request.url, env.RENDER_SERVICE_URL);
+      const rendered = await fetchRendered(request.url, renderServiceUrl);
       if (rendered !== null) {
         ctx.waitUntil(
           publishBotEvent({
@@ -65,15 +72,15 @@ export default {
       }
 
       const transformer = new ContentTransformEngine();
-      const upstream = new URL(env.UPSTREAM_URL);
-      const upstreamUrl = new URL(request.url);
-      upstreamUrl.hostname = upstream.hostname;
-      upstreamUrl.protocol = upstream.protocol;
-      upstreamUrl.port = upstream.port;
+      const upstream = new URL(upstreamUrl);
+      const upstreamReqUrl = new URL(request.url);
+      upstreamReqUrl.hostname = upstream.hostname;
+      upstreamReqUrl.protocol = upstream.protocol;
+      upstreamReqUrl.port = upstream.port;
       const botHeaders = new Headers(request.headers);
       botHeaders.delete("accept-encoding");
       const originResponse = await fetch(
-        new Request(upstreamUrl.toString(), { headers: botHeaders, method: request.method })
+        new Request(upstreamReqUrl.toString(), { headers: botHeaders, method: request.method })
       );
       const transformed = await transformer.transform(originResponse, detection.botId);
 
@@ -93,7 +100,7 @@ export default {
       return transformed;
     }
 
-    const upstream = new URL(env.UPSTREAM_URL);
+    const upstream = new URL(upstreamUrl);
     const url = new URL(request.url);
     url.hostname = upstream.hostname;
     url.protocol = upstream.protocol;
