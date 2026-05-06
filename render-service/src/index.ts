@@ -4,12 +4,22 @@ import { PageRenderer } from "./renderer";
 import { RenderQueue } from "./queue";
 import { createRenderServer } from "./server";
 
-const REDIS_HOST = process.env.REDIS_HOST ?? "localhost";
-const REDIS_PORT = parseInt(process.env.REDIS_PORT ?? "6379", 10);
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
+function getRedisConnection(): { host: string; port: number } {
+  const url = process.env.REDIS_URL;
+  if (url) {
+    const parsed = new URL(url);
+    return { host: parsed.hostname, port: parseInt(parsed.port || "6379", 10) };
+  }
+  return {
+    host: process.env.REDIS_HOST ?? "localhost",
+    port: parseInt(process.env.REDIS_PORT ?? "6379", 10),
+  };
+}
+
 async function main(): Promise<void> {
-  const connection = { host: REDIS_HOST, port: REDIS_PORT };
+  const connection = getRedisConnection();
   const redis = new Redis(connection);
   const cache = new RenderCache(redis);
 
