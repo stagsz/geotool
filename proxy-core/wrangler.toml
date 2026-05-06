@@ -4,14 +4,15 @@ compatibility_date = "2024-03-01"
 
 kv_namespaces = [
   { binding = "BOT_REGISTRY", id = "586b1acd1c474e8d9606041c448da0cc", preview_id = "987b83a7c0214f3ba118b51d512b0d57" },
-  { binding = "RENDER_CACHE", id = "480da1e93baf4f438db81e63d156909b", preview_id = "72fc4adda65d4581a729db26a870d58d" }
+  { binding = "RENDER_CACHE", id = "480da1e93baf4f438db81e63d156909b", preview_id = "72fc4adda65d4581a729db26a870d58d" },
+  { binding = "CLIENT_REGISTRY", id = "0988f2bc40b344acbd9444281b347e59", preview_id = "937e1c1fbf2e4ce7ba9edc95d656e6af" }
 ]
 
 [triggers]
 crons = ["0 */6 * * *"]
 
 [vars]
-RENDER_SERVICE_URL = "http://localhost:3001"
+RENDER_SERVICE_URL = "https://geotool-production-4198.up.railway.app"
 UPSTREAM_URL = "https://baraband.se"
 
 [build]
