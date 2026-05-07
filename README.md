@@ -26,6 +26,9 @@ AI Crawler hits client domain
         ▼
 Cloudflare Worker (proxy-core)
         │
+        ├─ IP rate limit check (120 req/min, optional RATE_LIMIT_KV binding)
+        │     → 429 Too Many Requests if exceeded
+        │
         ├─ Bot fingerprint check (UA + IP range + PTR DNS + behaviour)
         │     Confidence score: UA=30pts  IP=40pts  PTR=20pts  Behaviour=10pts
         │     Threshold: ≥70 to be "verified"
@@ -262,6 +265,32 @@ npx vitest run src/path/to/file.test.ts
 | `BOT_REGISTRY` | IP range data per bot ID, auto-refreshed every 6h |
 | `RENDER_CACHE` | Reserved for edge-cached rendered pages |
 | `CLIENT_REGISTRY` | Per-hostname client config (upstreamUrl, renderServiceUrl) |
+| `RATE_LIMIT_KV` | Per-IP request counters (optional — rate limiting disabled if absent) |
+
+---
+
+## Rate Limiting
+
+The Worker enforces a per-IP tumbling-window rate limit before any bot detection or KV reads, so abusive traffic is rejected at the cheapest possible point.
+
+- **Default:** 120 requests per 60-second window per `CF-Connecting-IP`
+- **Response:** `429 Too Many Requests` with `Retry-After: 60`
+- **Optional:** rate limiting is only active when `RATE_LIMIT_KV` is bound — omit the binding for local dev
+
+### Enabling on the live Worker
+
+```bash
+cd proxy-core
+
+# 1. Create the namespace (run once, copy the returned IDs)
+npx wrangler kv namespace create RATE_LIMIT_KV
+
+# 2. Add to wrangler.toml kv_namespaces:
+#    { binding = "RATE_LIMIT_KV", id = "<id>", preview_id = "<preview-id>" }
+
+# 3. Deploy
+npx wrangler deploy
+```
 
 ---
 
