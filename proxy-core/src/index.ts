@@ -93,7 +93,7 @@ export default {
       const originResponse = await fetch(
         new Request(upstreamReqUrl.toString(), { headers: botHeaders, method: request.method })
       );
-      const transformed = await transformer.transform(originResponse, detection.botId);
+      const transformed = await transformer.transform(originResponse, detection.botId, request.url);
 
       const event: BotEvent = {
         botId: detection.botId,

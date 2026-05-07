@@ -13,14 +13,40 @@ export interface TransformResult {
   transformedSize: number;
 }
 
+export function rewriteOriginUrls(html: string, originBase: string, requestBase: string): string {
+  const esc = originBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return html
+    .replace(
+      new RegExp(`(<link[^>]+rel=["']canonical["'][^>]+href=["'])${esc}`, "gi"),
+      `$1${requestBase}`
+    )
+    .replace(
+      new RegExp(`(<meta[^>]+property=["']og:url["'][^>]+content=["'])${esc}`, "gi"),
+      `$1${requestBase}`
+    );
+}
+
 export class ContentTransformEngine {
-  async transform(response: Response, _botId: string | null): Promise<Response> {
+  async transform(response: Response, _botId: string | null, requestUrl?: string): Promise<Response> {
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/html")) return response;
 
     const html = await response.text();
     const pageTypeHint = parseServerTimingPageType(response.headers.get("server-timing"));
     const result = this.transformHtml(html, response.url, _botId, pageTypeHint);
+
+    let finalHtml = result.html;
+    if (requestUrl && response.url) {
+      try {
+        const originBase = new URL(response.url).origin;
+        const requestBase = new URL(requestUrl).origin;
+        if (originBase !== requestBase) {
+          finalHtml = rewriteOriginUrls(finalHtml, originBase, requestBase);
+        }
+      } catch {
+        // ignore unparseable URLs
+      }
+    }
 
     const headers = new Headers(response.headers);
     headers.delete("content-encoding");
@@ -31,7 +57,7 @@ export class ContentTransformEngine {
     headers.set("x-llm-proxy-entities", String(result.entitiesExtracted));
     headers.set("x-llm-proxy-processed", "true");
 
-    return new Response(result.html, { status: response.status, headers });
+    return new Response(finalHtml, { status: response.status, headers });
   }
 
   transformHtml(

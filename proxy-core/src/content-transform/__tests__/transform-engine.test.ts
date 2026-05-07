@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ContentTransformEngine } from "../index";
+import { ContentTransformEngine, rewriteOriginUrls } from "../index";
 
 const engine = new ContentTransformEngine();
 
@@ -52,6 +52,32 @@ describe("ContentTransformEngine.transformHtml", () => {
 
     const withHint = engine.transformHtml(html, "https://example.com/product/x", null, "landing");
     expect(withHint.pageType).toBe("landing");
+  });
+});
+
+describe("rewriteOriginUrls", () => {
+  it("rewrites canonical href", () => {
+    const html = `<link rel="canonical" href="https://baraband.se/products/shirt">`;
+    expect(rewriteOriginUrls(html, "https://baraband.se", "https://proxy.example.com")).toBe(
+      `<link rel="canonical" href="https://proxy.example.com/products/shirt">`
+    );
+  });
+
+  it("rewrites og:url content", () => {
+    const html = `<meta property="og:url" content="https://baraband.se/products/shirt">`;
+    expect(rewriteOriginUrls(html, "https://baraband.se", "https://proxy.example.com")).toBe(
+      `<meta property="og:url" content="https://proxy.example.com/products/shirt">`
+    );
+  });
+
+  it("leaves other URLs untouched", () => {
+    const html = `<a href="https://baraband.se/page">link</a>`;
+    expect(rewriteOriginUrls(html, "https://baraband.se", "https://proxy.example.com")).toBe(html);
+  });
+
+  it("is a no-op when origin and request base match", () => {
+    const html = `<link rel="canonical" href="https://baraband.se/products/shirt">`;
+    expect(rewriteOriginUrls(html, "https://baraband.se", "https://baraband.se")).toBe(html);
   });
 });
 
