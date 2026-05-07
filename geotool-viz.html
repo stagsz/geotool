@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Proxy Agency Platform — Architecture</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e2e4ed;
+    --muted: #6b7280;
+    --accent-blue: #3b82f6;
+    --accent-green: #22c55e;
+    --accent-yellow: #eab308;
+    --accent-red: #ef4444;
+    --accent-purple: #a855f7;
+    --accent-orange: #f97316;
+    --highlight: #1e3a5f;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 28px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+    font-family: inherit;
+    font-size: 12px;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Flow diagram ── */
+  .flow-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .flow-node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+    flex: 1;
+  }
+
+  .flow-node:hover, .flow-node.selected {
+    border-color: var(--accent-blue);
+    background: var(--highlight);
+  }
+
+  .flow-node .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .flow-node .name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .flow-node .desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    margin-top: 6px;
+  }
+
+  .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  .badge-green { background: #14532d; color: #86efac; }
+  .badge-yellow { background: #422006; color: #fde68a; }
+  .badge-purple { background: #3b0764; color: #d8b4fe; }
+  .badge-red { background: #450a0a; color: #fca5a5; }
+  .badge-orange { background: #431407; color: #fed7aa; }
+
+  .connector-v {
+    width: 2px;
+    background: var(--border);
+    margin: 0 auto;
+    height: 28px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .connector-v::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: -4px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--border);
+  }
+
+  .connector-h {
+    height: 2px;
+    background: var(--border);
+    align-self: center;
+    width: 20px;
+    flex-shrink: 0;
+  }
+
+  .split-container {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .split-branch {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .branch-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    padding: 4px;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+
+  /* detail panel */
+  .detail-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    margin-top: 28px;
+  }
+
+  .detail-box h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .detail-item { display: flex; flex-direction: column; gap: 4px; }
+  .detail-item .key { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .detail-item .val { font-size: 12px; color: var(--text); }
+
+  pre.code-snippet {
+    background: #0a0c14;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    font-size: 11px;
+    overflow-x: auto;
+    margin-top: 12px;
+    white-space: pre;
+    color: #c9d1d9;
+    line-height: 1.6;
+  }
+
+  .kw { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .cmt { color: #8b949e; }
+  .num { color: #79c0ff; }
+  .fn  { color: #d2a8ff; }
+
+  /* ── Packages tab ── */
+  .pkg-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .pkg-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .pkg-card:hover { border-color: var(--accent-blue); }
+  .pkg-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .pkg-card .runtime { font-size: 10px; color: var(--muted); margin-bottom: 10px; }
+  .pkg-card ul { list-style: none; padding: 0; }
+  .pkg-card li { font-size: 11px; color: var(--muted); padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .pkg-card li:last-child { border-bottom: none; }
+  .pkg-card li::before { content: '▸ '; color: var(--accent-blue); }
+
+  /* ── Bot detection tab ── */
+  .score-demo {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .score-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+  }
+
+  .score-section h3 { font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+
+  .signal-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .signal-name { width: 160px; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+  .bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+  }
+
+  .signal-pts { width: 60px; text-align: right; font-size: 11px; font-weight: 600; }
+
+  .threshold-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .verdict {
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .verdict-bot { background: #450a0a; color: #fca5a5; }
+  .verdict-human { background: #14532d; color: #86efac; }
+
+  /* slider input */
+  .demo-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .slider-row label { width: 160px; font-size: 11px; color: var(--muted); }
+  .slider-row input[type=range] { flex: 1; accent-color: var(--accent-blue); }
+  .slider-row .val-out { width: 50px; text-align: right; font-size: 11px; color: var(--accent-blue); font-weight: 600; }
+
+  /* events tab */
+  .event-stream {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    height: 320px;
+    overflow-y: auto;
+    font-size: 11px;
+  }
+
+  .event-line {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .event-ts { color: var(--muted); flex-shrink: 0; }
+  .event-type { flex-shrink: 0; font-weight: 600; }
+  .event-data { color: var(--muted); word-break: break-all; }
+
+  .btn {
+    background: var(--accent-blue);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background 0.15s;
+    margin-right: 8px;
+  }
+  .btn:hover { background: #2563eb; }
+  .btn.secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn.secondary:hover { border-color: var(--accent-blue); }
+
+  .stats-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .stat-box {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat-box .val { font-size: 28px; font-weight: 700; color: var(--accent-blue); }
+  .stat-box .key { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 4px; }
+
+  /* anomaly */
+  .anomaly-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    border: 1px solid transparent;
+  }
+
+  .anomaly-ok { background: #14532d22; border-color: #14532d; }
+  .anomaly-warn { background: #42200622; border-color: #422006; }
+  .anomaly-icon { font-size: 16px; }
+</style>
+</head>
+<body>
+
+<h1>LLM Proxy Agency Platform</h1>
+<p class="subtitle">Edge-deployed middleware · AI crawler detection · Content transformation · Citation analytics</p>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('flow')">Request Flow</button>
+  <button class="tab" onclick="switchTab('packages')">Packages</button>
+  <button class="tab" onclick="switchTab('botdet')">Bot Detection</button>
+  <button class="tab" onclick="switchTab('events')">Event Pipeline</button>
+</div>
+
+<!-- ════════════════ TAB: FLOW ════════════════ -->
+<div id="tab-flow" class="panel active">
+
+<div class="flow-wrap">
+
+  <!-- Internet -->
+  <div class="flow-node" onclick="selectNode('internet')" id="node-internet">
+    <div class="label">Ingress</div>
+    <div class="name">Internet / Client</div>
+    <div class="desc">HTTP request arrives — browser or AI crawler</div>
+    <span class="badge badge-blue">Any UA</span>
+  </div>
+
+  <div style="height:28px;position:relative;width:2px;background:var(--border);margin:0 auto;">
+    <div style="position:absolute;bottom:-5px;left:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--border);"></div>
+  </div>
+
+  <!-- Cloudflare Worker -->
+  <div class="flow-node" onclick="selectNode('worker')" id="node-worker" style="border-color:#3b82f644;">
+    <div class="label">Cloudflare Edge · proxy-core</div>
+    <div class="name">Bot Detection Engine</div>
+    <div class="desc">UA parse (30 pts) + IP range (40 pts) → confidence score</div>
+    <span class="badge badge-blue">Workers Runtime</span>
+    <span class="badge badge-yellow">Threshold ≥70</span>
+  </div>
+
+  <div style="height:28px;position:relative;width:2px;background:var(--border);margin:0 auto;">
+    <div style="position:absolute;bottom:-5px;left:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--border);"></div>
+  </div>
+
+  <!-- Decision split -->
+  <div class="split-container">
+
+    <!-- Branch: Human -->
+    <div class="split-branch">
+      <div class="branch-label">Human (score &lt; 70)</div>
+      <div class="flow-node" onclick="selectNode('passthrough')" id="node-passthrough">
+        <div class="label">Pass-through</div>
+        <div class="name">fetch(request)</div>
+        <div class="desc">Unmodified proxy to origin</div>
+        <span class="badge badge-green">0ms overhead</span>
+      </div>
+    </div>
+
+    <!-- Branch: Bot verified -->
+    <div class="split-branch">
+      <div class="branch-label">Verified bot (score ≥ 70)</div>
+
+      <div class="flow-node" onclick="selectNode('cache')" id="node-cache" style="margin-bottom:8px;">
+        <div class="label">KV Lookup</div>
+        <div class="name">RENDER_CACHE</div>
+        <div class="desc">SHA256(normalised URL) → hit or miss</div>
+        <span class="badge badge-purple">TTL 4h</span>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <!-- Cache hit -->
+        <div style="flex:1;">
+          <div style="font-size:10px;color:var(--muted);text-align:center;margin-bottom:6px;">Cache hit</div>
+          <div class="flow-node" onclick="selectNode('cachehit')" id="node-cachehit">
+            <div class="label">Serve</div>
+            <div class="name">Cached HTML</div>
+            <div class="desc">Return rendered response instantly</div>
+            <span class="badge badge-green">Fast path</span>
+          </div>
+        </div>
+        <!-- Cache miss -->
+        <div style="flex:1;">
+          <div style="font-size:10px;color:var(--muted);text-align:center;margin-bottom:6px;">Cache miss</div>
+          <div class="flow-node" onclick="selectNode('transform')" id="node-transform">
+            <div class="label">Transform</div>
+            <div class="name">ContentTransformEngine</div>
+            <div class="desc">Fetch origin → transform for AI consumption</div>
+            <span class="badge badge-orange">Slow path</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Branch: Honeypot -->
+    <div class="split-branch">
+      <div class="branch-label">Honeypot path hit</div>
+      <div class="flow-node" onclick="selectNode('honeypot')" id="node-honeypot">
+        <div class="label">Trap</div>
+        <div class="name">Honeypot 200 OK</div>
+        <div class="desc">10 trap paths → fake 200, logs event to data-layer</div>
+        <span class="badge badge-red">Fingerprint</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="height:28px;position:relative;width:2px;background:var(--border);margin:0 auto;">
+    <div style="position:absolute;bottom:-5px;left:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--border);"></div>
+  </div>
+
+  <!-- render-service -->
+  <div class="flow-node" onclick="selectNode('render')" id="node-render">
+    <div class="label">Node.js service · :3001</div>
+    <div class="name">render-service</div>
+    <div class="desc">BullMQ worker (concurrency=4) → Puppeteer → Redis cache</div>
+    <span class="badge badge-blue">HTTP :3001</span>
+    <span class="badge badge-purple">Redis TTL 14400s</span>
+  </div>
+
+  <div style="height:28px;position:relative;width:2px;background:var(--border);margin:0 auto;">
+    <div style="position:absolute;bottom:-5px;left:-4px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--border);"></div>
+  </div>
+
+  <!-- data-layer -->
+  <div class="flow-node" onclick="selectNode('datalayer')" id="node-datalayer">
+    <div class="label">Analytics pipeline · data-layer</div>
+    <div class="name">EventPublisher → ClickHouseWriter → CitationTracker</div>
+    <div class="desc">Buffer 1000 events OR 100ms flush · anomaly detection on citation drops ≥20%</div>
+    <span class="badge badge-orange">ClickHouse</span>
+    <span class="badge badge-yellow">AnomalyDetector</span>
+  </div>
+
+</div>
+
+<!-- Detail panel -->
+<div class="detail-box" id="detail-box" style="display:none;">
+  <h3 id="detail-title"></h3>
+  <div class="detail-grid" id="detail-grid"></div>
+  <pre class="code-snippet" id="detail-code" style="display:none;"></pre>
+</div>
+
+</div>
+
+<!-- ════════════════ TAB: PACKAGES ════════════════ -->
+<div id="tab-packages" class="panel">
+<div class="pkg-grid">
+
+  <div class="pkg-card">
+    <h3 style="color:#93c5fd;">proxy-core</h3>
+    <div class="runtime"><span class="badge badge-blue">Cloudflare Workers</span></div>
+    <ul>
+      <li>BotDetectionEngine</li>
+      <li>ContentTransformEngine</li>
+      <li>Honeypot paths (×10)</li>
+      <li>CLIENT_REGISTRY KV (multi-tenant)</li>
+      <li>RENDER_CACHE KV</li>
+      <li>publishBotEvent → data-layer</li>
+    </ul>
+  </div>
+
+  <div class="pkg-card">
+    <h3 style="color:#86efac;">render-service</h3>
+    <div class="runtime"><span class="badge badge-green">Node.js · :3001</span></div>
+    <ul>
+      <li>HTTP server → /render?url=</li>
+      <li>BullMQ queue (concurrency=4)</li>
+      <li>Puppeteer-core renderer</li>
+      <li>Redis cache (SHA256 key, 4h TTL)</li>
+      <li>CHROME_PATH required in prod</li>
+      <li>REDIS_HOST / REDIS_PORT / PORT env</li>
+    </ul>
+  </div>
+
+  <div class="pkg-card">
+    <h3 style="color:#d8b4fe;">data-layer</h3>
+    <div class="runtime"><span class="badge badge-purple">Node.js</span></div>
+    <ul>
+      <li>EventPublisher (buffer → flush)</li>
+      <li>ClickHouseWriter (batch inserts)</li>
+      <li>CitationTracker (per clientId)</li>
+      <li>AnomalyDetector</li>
+      <li>detectIpRangeChange (&gt;10%)</li>
+      <li>detectCitationDrop (≥20%)</li>
+    </ul>
+  </div>
+
+  <div class="pkg-card">
+    <h3 style="color:#fde68a;">dashboard</h3>
+    <div class="runtime"><span class="badge badge-yellow">React / Node</span></div>
+    <ul>
+      <li>Client-facing analytics UI</li>
+      <li>Citation performance charts</li>
+      <li>Bot traffic breakdown</li>
+      <li>(scaffold — in progress)</li>
+    </ul>
+  </div>
+
+  <div class="pkg-card">
+    <h3 style="color:#fed7aa;">evals</h3>
+    <div class="runtime"><span class="badge badge-orange">Node.js</span></div>
+    <ul>
+      <li>Evaluation suite</li>
+      <li>Bot detection accuracy</li>
+      <li>Content transform quality</li>
+    </ul>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════ TAB: BOT DETECTION ════════════════ -->
+<div id="tab-botdet" class="panel">
+
+<div class="score-demo">
+
+  <div class="score-section">
+    <h3>Interactive Scoring Demo</h3>
+    <div class="demo-controls" id="demo-controls"></div>
+
+    <div id="score-bars"></div>
+
+    <div class="threshold-line">
+      <span style="color:var(--muted);">Total score:</span>
+      <span id="total-score" style="font-size:18px;font-weight:700;color:var(--accent-blue);">0</span>
+      <span style="color:var(--muted);">/</span>
+      <span style="color:var(--muted);">100 &nbsp;·&nbsp; Threshold: 70</span>
+      <span id="verdict" class="verdict">—</span>
+    </div>
+  </div>
+
+  <div class="score-section">
+    <h3>Signal Definitions</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">User-Agent signals (max 30 pts)</div>
+        <pre class="code-snippet"><span class="cmt">// Known AI crawlers</span>
+<span class="str">"GPTBot"</span>        → 30 pts
+<span class="str">"ClaudeBot"</span>     → 30 pts
+<span class="str">"anthropic-ai"</span>  → 30 pts
+<span class="str">"CCBot"</span>         → 30 pts
+<span class="str">"Google-Extended"</span>→ 30 pts
+<span class="str">"PerplexityBot"</span> → 30 pts
+<span class="cmt">// Generic bot signals</span>
+<span class="str">"bot"</span>/<span class="str">"crawler"</span> → 20 pts
+no UA present   → 15 pts</pre>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">IP Range signals (max 40 pts)</div>
+        <pre class="code-snippet"><span class="cmt">// Verified ASN ranges</span>
+OpenAI / Azure  → 40 pts
+Anthropic       → 40 pts
+Google Cloud    → 35 pts
+AWS EC2 ranges  → 25 pts
+Datacenter IP   → 20 pts
+<span class="cmt">// Residential / unknown</span>
+Residential     →  0 pts</pre>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div>
+
+<!-- ════════════════ TAB: EVENTS ════════════════ -->
+<div id="tab-events" class="panel">
+
+<div class="stats-row" id="stats-row">
+  <div class="stat-box"><div class="val" id="stat-total">0</div><div class="key">Events buffered</div></div>
+  <div class="stat-box"><div class="val" id="stat-bots">0</div><div class="key">Bot hits</div></div>
+  <div class="stat-box"><div class="val" id="stat-citations">0</div><div class="key">Citations tracked</div></div>
+  <div class="stat-box"><div class="val" id="stat-flushes">0</div><div class="key">CH flushes</div></div>
+</div>
+
+<div style="margin-bottom:12px;">
+  <button class="btn" onclick="startEventSim()">▶ Start simulation</button>
+  <button class="btn secondary" onclick="stopEventSim()">■ Stop</button>
+  <button class="btn secondary" onclick="clearEvents()">⌫ Clear</button>
+</div>
+
+<div class="event-stream" id="event-stream"></div>
+
+<div style="margin-top:20px;">
+  <div style="font-size:12px;font-weight:700;margin-bottom:10px;">Anomaly Detector</div>
+  <div id="anomaly-panel">
+    <div class="anomaly-row anomaly-ok">
+      <span class="anomaly-icon">✓</span>
+      <span>IP range shift: <strong>2.1%</strong> — within 10% threshold</span>
+    </div>
+    <div class="anomaly-row anomaly-ok">
+      <span class="anomaly-icon">✓</span>
+      <span>Citation rate: <strong>87%</strong> — no drop detected (threshold ≥20%)</span>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── Flow node details ──────────────────────────────────────────────────────
+const NODE_DATA = {
+  internet: {
+    title: 'Internet / Client',
+    fields: [
+      ['Protocol', 'HTTPS'],
+      ['Payload', 'Raw HTTP request (headers, body, URL)'],
+      ['Forwarded to', 'Cloudflare Worker globally distributed'],
+      ['Latency added', '~0ms (edge arrival)'],
+    ],
+    code: null,
+  },
+  worker: {
+    title: 'proxy-core · BotDetectionEngine',
+    fields: [
+      ['Runtime', 'Cloudflare Workers (V8 isolate)'],
+      ['UA score', '30 pts max (known AI UA → full 30 pts)'],
+      ['IP score', '40 pts max (verified ASN → full 40 pts)'],
+      ['Threshold', '≥ 70 → "verified bot"'],
+      ['KV binding', 'CLIENT_REGISTRY · RENDER_CACHE'],
+    ],
+    code: `<span class="cmt">// proxy-core/src/index.ts</span>
+<span class="kw">const</span> score = uaScore + ipScore;
+<span class="kw">if</span> (score >= <span class="num">70</span>) {
+  <span class="cmt">// verified bot → check cache or transform</span>
+  <span class="kw">return</span> <span class="fn">handleBot</span>(request, env, score);
+}
+<span class="kw">return</span> fetch(request); <span class="cmt">// human pass-through</span>`,
+  },
+  passthrough: {
+    title: 'Human pass-through',
+    fields: [
+      ['Action', 'Unmodified fetch(request)'],
+      ['Overhead', '~0ms (no processing)'],
+      ['Response', 'Exact origin response'],
+      ['Data-layer', 'No event published'],
+    ],
+    code: null,
+  },
+  cache: {
+    title: 'RENDER_CACHE KV lookup',
+    fields: [
+      ['Cache key', 'SHA256(normalised URL)'],
+      ['TTL', '14400s (4 hours)'],
+      ['Backend', 'Cloudflare KV (global replication)'],
+      ['Miss action', 'Forward to ContentTransformEngine'],
+    ],
+    code: `<span class="kw">const</span> key = <span class="kw">await</span> <span class="fn">sha256</span>(<span class="fn">normalise</span>(url));
+<span class="kw">const</span> cached = <span class="kw">await</span> env.RENDER_CACHE.<span class="fn">get</span>(key);
+<span class="kw">if</span> (cached) <span class="kw">return</span> <span class="kw">new</span> Response(cached);`,
+  },
+  cachehit: {
+    title: 'Cache hit — fast path',
+    fields: [
+      ['Response time', 'Sub-millisecond (KV edge)'],
+      ['Content', 'Pre-rendered HTML for AI consumption'],
+      ['Headers', 'X-Cache: HIT · Content-Type: text/html'],
+    ],
+    code: null,
+  },
+  transform: {
+    title: 'ContentTransformEngine — slow path',
+    fields: [
+      ['Step 1', 'Fetch raw HTML from origin'],
+      ['Step 2', 'Extract main content, strip boilerplate'],
+      ['Step 3', 'Queue Puppeteer job → render-service'],
+      ['Step 4', 'Store result in RENDER_CACHE KV'],
+      ['Fallback', 'Return transformed HTML if render fails'],
+    ],
+    code: `<span class="kw">const</span> raw = <span class="kw">await</span> <span class="fn">fetchOrigin</span>(url);
+<span class="kw">const</span> html = <span class="kw">await</span> <span class="fn">renderService</span>.<span class="fn">render</span>(url);
+<span class="kw">await</span> env.RENDER_CACHE.<span class="fn">put</span>(key, html, { expirationTtl: <span class="num">14400</span> });`,
+  },
+  honeypot: {
+    title: 'Honeypot trap',
+    fields: [
+      ['Trap paths', '10 hidden URLs (not in sitemap)'],
+      ['Response', '200 OK with fake content'],
+      ['Side effect', 'BotHitEvent published to data-layer'],
+      ['Purpose', 'Fingerprint aggressive scrapers'],
+    ],
+    code: `<span class="cmt">// 10 trap routes e.g. /api/internal/config</span>
+<span class="kw">if</span> (<span class="fn">isHoneypot</span>(pathname)) {
+  <span class="kw">await</span> <span class="fn">publishBotEvent</span>({ type: <span class="str">'honeypot'</span>, ip, ua });
+  <span class="kw">return</span> <span class="kw">new</span> Response(fakeBody, { status: <span class="num">200</span> });
+}`,
+  },
+  render: {
+    title: 'render-service · Node.js :3001',
+    fields: [
+      ['Endpoint', 'GET /render?url=<encoded>'],
+      ['Queue', 'BullMQ (concurrency=4)'],
+      ['Renderer', 'Puppeteer-core (headless Chrome)'],
+      ['Cache backend', 'Redis · SHA256 key · TTL 14400s'],
+      ['Env vars', 'REDIS_HOST · REDIS_PORT · PORT · CHROME_PATH'],
+    ],
+    code: `<span class="cmt">// render-service/src/server.ts</span>
+app.<span class="fn">get</span>(<span class="str">'/render'</span>, <span class="kw">async</span> (req, res) => {
+  <span class="kw">const</span> cached = <span class="kw">await</span> redis.<span class="fn">get</span>(key);
+  <span class="kw">if</span> (cached) <span class="kw">return</span> res.<span class="fn">send</span>(cached);
+  <span class="kw">const</span> job = <span class="kw">await</span> queue.<span class="fn">add</span>(<span class="str">'render'</span>, { url });
+  <span class="kw">const</span> html = <span class="kw">await</span> job.<span class="fn">waitUntilFinished</span>(queueEvents);
+  <span class="kw">await</span> redis.<span class="fn">setex</span>(key, <span class="num">14400</span>, html);
+  res.<span class="fn">send</span>(html);
+});`,
+  },
+  datalayer: {
+    title: 'data-layer · Analytics pipeline',
+    fields: [
+      ['EventPublisher', 'Buffer → flush at 1000 events OR 100ms'],
+      ['ClickHouseWriter', 'Batch inserts via injected client'],
+      ['CitationTracker', 'Rate per clientId (multi-tenant)'],
+      ['AnomalyDetector', 'IP range >10% shift · Citation drop ≥20%'],
+    ],
+    code: `<span class="cmt">// data-layer/src/events.ts</span>
+publisher.<span class="fn">publish</span>(event);           <span class="cmt">// buffer</span>
+<span class="cmt">// auto-flush after 100ms or 1000 events</span>
+<span class="kw">await</span> clickhouse.<span class="fn">insert</span>(batch);     <span class="cmt">// bulk write</span>
+citationTracker.<span class="fn">record</span>(clientId);   <span class="cmt">// rate calc</span>
+anomaly.<span class="fn">detectCitationDrop</span>(rates);  <span class="cmt">// ≥20% alert</span>`,
+  },
+};
+
+function selectNode(id) {
+  document.querySelectorAll('.flow-node').forEach(n => n.classList.remove('selected'));
+  const el = document.getElementById('node-' + id);
+  if (el) el.classList.add('selected');
+
+  const data = NODE_DATA[id];
+  if (!data) return;
+
+  document.getElementById('detail-box').style.display = 'block';
+  document.getElementById('detail-title').textContent = data.title;
+
+  const grid = document.getElementById('detail-grid');
+  grid.innerHTML = data.fields.map(([k, v]) =>
+    `<div class="detail-item"><div class="key">${k}</div><div class="val">${v}</div></div>`
+  ).join('');
+
+  const codeEl = document.getElementById('detail-code');
+  if (data.code) {
+    codeEl.style.display = 'block';
+    codeEl.innerHTML = data.code;
+  } else {
+    codeEl.style.display = 'none';
+  }
+}
+
+// ── Bot detection demo ─────────────────────────────────────────────────────
+const SIGNALS = [
+  { id: 'ua',     label: 'User-Agent match',   max: 30, color: '#3b82f6' },
+  { id: 'ip',     label: 'IP range (ASN)',      max: 40, color: '#a855f7' },
+  { id: 'header', label: 'Suspicious headers',  max: 15, color: '#f97316' },
+  { id: 'rate',   label: 'Request rate',        max: 15, color: '#eab308' },
+];
+
+let sliderValues = { ua: 0, ip: 0, header: 0, rate: 0 };
+
+function initBotDemo() {
+  const controls = document.getElementById('demo-controls');
+  controls.innerHTML = SIGNALS.map(s => `
+    <div class="slider-row">
+      <label>${s.label} (${s.max} pts)</label>
+      <input type="range" min="0" max="${s.max}" value="0" step="1"
+             oninput="updateScore('${s.id}', this.value)"
+             id="slider-${s.id}">
+      <span class="val-out" id="out-${s.id}">0</span>
+    </div>
+  `).join('');
+
+  const bars = document.getElementById('score-bars');
+  bars.innerHTML = SIGNALS.map(s => `
+    <div class="signal-row">
+      <span class="signal-name">${s.label}</span>
+      <div class="bar-track">
+        <div class="bar-fill" id="bar-${s.id}" style="width:0%;background:${s.color};"></div>
+      </div>
+      <span class="signal-pts" id="pts-${s.id}" style="color:${s.color};">0 / ${s.max}</span>
+    </div>
+  `).join('');
+
+  // Preset buttons
+  bars.innerHTML += `
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn secondary" style="font-size:11px;" onclick="applyPreset('gptbot')">GPTBot preset</button>
+      <button class="btn secondary" style="font-size:11px;" onclick="applyPreset('human')">Human browser</button>
+      <button class="btn secondary" style="font-size:11px;" onclick="applyPreset('generic')">Generic bot</button>
+    </div>`;
+
+  updateScore('ua', 0);
+}
+
+function updateScore(id, val) {
+  sliderValues[id] = parseInt(val);
+  const sig = SIGNALS.find(s => s.id === id);
+  document.getElementById('out-' + id).textContent = val;
+  document.getElementById('pts-' + id).textContent = `${val} / ${sig.max}`;
+  document.getElementById('bar-' + id).style.width = (val / sig.max * 100) + '%';
+
+  const total = Object.values(sliderValues).reduce((a, b) => a + b, 0);
+  document.getElementById('total-score').textContent = total;
+  const v = document.getElementById('verdict');
+  if (total >= 70) {
+    v.textContent = '🤖 Verified Bot';
+    v.className = 'verdict verdict-bot';
+  } else {
+    v.textContent = '👤 Human';
+    v.className = 'verdict verdict-human';
+  }
+}
+
+function applyPreset(name) {
+  const presets = {
+    gptbot:  { ua: 30, ip: 40, header: 10, rate: 12 },
+    human:   { ua: 0,  ip: 0,  header: 0,  rate: 2  },
+    generic: { ua: 20, ip: 25, header: 8,  rate: 7  },
+  };
+  const p = presets[name];
+  SIGNALS.forEach(s => {
+    sliderValues[s.id] = p[s.id];
+    document.getElementById('slider-' + s.id).value = p[s.id];
+    updateScore(s.id, p[s.id]);
+  });
+}
+
+// ── Event pipeline sim ─────────────────────────────────────────────────────
+let simInterval = null;
+let stats = { total: 0, bots: 0, citations: 0, flushes: 0 };
+
+const EVENT_TYPES = [
+  { type: 'BOT_HIT',       color: '#fca5a5', weight: 3 },
+  { type: 'CITATION',      color: '#86efac', weight: 4 },
+  { type: 'HONEYPOT_HIT',  color: '#d8b4fe', weight: 1 },
+  { type: 'CACHE_HIT',     color: '#93c5fd', weight: 5 },
+  { type: 'RENDER_QUEUED', color: '#fed7aa', weight: 2 },
+  { type: 'CH_FLUSH',      color: '#fde68a', weight: 1 },
+];
+
+const CLIENTS = ['client_acme', 'client_stripe', 'client_vercel'];
+const UAS = ['GPTBot/1.0', 'ClaudeBot', 'PerplexityBot', 'CCBot/2.0'];
+
+function weightedRandom(items) {
+  const total = items.reduce((s, i) => s + i.weight, 0);
+  let r = Math.random() * total;
+  for (const item of items) { r -= item.weight; if (r <= 0) return item; }
+  return items[0];
+}
+
+function addEvent(type, color, data) {
+  const stream = document.getElementById('event-stream');
+  const ts = new Date().toISOString().slice(11, 23);
+  const line = document.createElement('div');
+  line.className = 'event-line';
+  line.innerHTML = `
+    <span class="event-ts">${ts}</span>
+    <span class="event-type" style="color:${color};">${type}</span>
+    <span class="event-data">${data}</span>
+  `;
+  stream.insertBefore(line, stream.firstChild);
+  if (stream.children.length > 80) stream.removeChild(stream.lastChild);
+}
+
+function startEventSim() {
+  if (simInterval) return;
+  simInterval = setInterval(() => {
+    const ev = weightedRandom(EVENT_TYPES);
+    const client = CLIENTS[Math.floor(Math.random() * CLIENTS.length)];
+    const ua = UAS[Math.floor(Math.random() * UAS.length)];
+    const ip = `${35+Math.floor(Math.random()*200)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}.${Math.floor(Math.random()*256)}`;
+
+    let data = '';
+    if (ev.type === 'BOT_HIT') {
+      data = `client=${client} ua="${ua}" ip=${ip} score=${70+Math.floor(Math.random()*30)}`;
+      stats.bots++;
+    } else if (ev.type === 'CITATION') {
+      data = `client=${client} url="/blog/post-${Math.floor(Math.random()*99)}" llm="${ua}"`;
+      stats.citations++;
+    } else if (ev.type === 'CH_FLUSH') {
+      data = `batch_size=${100+Math.floor(Math.random()*900)} latency=${2+Math.floor(Math.random()*18)}ms`;
+      stats.flushes++;
+    } else if (ev.type === 'HONEYPOT_HIT') {
+      data = `path="/api/internal/config" ip=${ip} ua="${ua}"`;
+    } else if (ev.type === 'CACHE_HIT') {
+      data = `key=sha256:${Math.random().toString(36).slice(2,10)}... client=${client}`;
+    } else if (ev.type === 'RENDER_QUEUED') {
+      data = `url="https://example.com/blog/${Math.floor(Math.random()*99)}" priority=normal`;
+    }
+
+    stats.total++;
+    addEvent(ev.type, ev.color, data);
+    document.getElementById('stat-total').textContent = stats.total;
+    document.getElementById('stat-bots').textContent = stats.bots;
+    document.getElementById('stat-citations').textContent = stats.citations;
+    document.getElementById('stat-flushes').textContent = stats.flushes;
+
+    // Anomaly check every 20 events
+    if (stats.total % 20 === 0) updateAnomalyPanel();
+
+  }, 300);
+}
+
+function stopEventSim() {
+  clearInterval(simInterval);
+  simInterval = null;
+}
+
+function clearEvents() {
+  stopEventSim();
+  document.getElementById('event-stream').innerHTML = '';
+  stats = { total: 0, bots: 0, citations: 0, flushes: 0 };
+  ['total','bots','citations','flushes'].forEach(k => document.getElementById('stat-'+k).textContent = '0');
+}
+
+function updateAnomalyPanel() {
+  const ipShift = (Math.random() * 15).toFixed(1);
+  const citRate = (70 + Math.random() * 30).toFixed(0);
+  const ipOk = parseFloat(ipShift) <= 10;
+  const citOk = parseFloat(citRate) >= 80;
+  document.getElementById('anomaly-panel').innerHTML = `
+    <div class="anomaly-row ${ipOk ? 'anomaly-ok' : 'anomaly-warn'}">
+      <span class="anomaly-icon">${ipOk ? '✓' : '⚠'}</span>
+      <span>IP range shift: <strong>${ipShift}%</strong> — ${ipOk ? 'within 10% threshold' : 'ANOMALY: exceeds 10% threshold'}</span>
+    </div>
+    <div class="anomaly-row ${citOk ? 'anomaly-ok' : 'anomaly-warn'}">
+      <span class="anomaly-icon">${citOk ? '✓' : '⚠'}</span>
+      <span>Citation rate: <strong>${citRate}%</strong> — ${citOk ? 'no drop detected' : 'ANOMALY: citation drop ≥20%'}</span>
+    </div>
+  `;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+initBotDemo();
+</script>
+</body>
+</html>
