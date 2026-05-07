@@ -240,6 +240,9 @@ npx vitest run src/path/to/file.test.ts
 | `CHROME_PATH` | — | Chromium binary path (set in Dockerfile to `/usr/bin/chromium`) |
 | `STATS_API_KEY` | — | Bearer token required on `GET /stats`; unset = open (local dev) |
 | `EVENTS_API_KEY` | — | Bearer token required on `POST /events`; unset = open (local dev) |
+| `CLIENT_API_KEYS` | — | JSON map of hostname→key for per-client data isolation. e.g. `{"example.com":"key123"}` |
+| `ALERT_WEBHOOK_URL` | — | Webhook URL to receive alert notifications when anomalies are detected |
+| `ALERT_BOT_HITS_PER_HOUR` | — | Bot hits per hour threshold that triggers an alert |
 | `CLICKHOUSE_URL` | — | ClickHouse HTTP endpoint (e.g. `https://host:8443`); omit to skip ClickHouse forwarding |
 | `CLICKHOUSE_DATABASE` | — | ClickHouse database name |
 | `CLICKHOUSE_USER` | `default` | ClickHouse username |

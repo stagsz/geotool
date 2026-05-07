@@ -9,10 +9,40 @@ const MAX_EVENTS_BODY = 1_048_576;
 export interface ServerOptions {
   statsApiKey?: string;
   eventsApiKey?: string;
+  clientApiKeys?: Record<string, string>;
   statsRateLimit?: {
     maxRequests: number;
     windowMs: number;
   };
+}
+
+function resolveAuth(
+  req: IncomingMessage,
+  options: ServerOptions
+): { authorized: boolean; clientHostname?: string } {
+  const authConfigured = options.statsApiKey || options.clientApiKeys;
+  if (!authConfigured) return { authorized: true };
+
+  const auth = req.headers["authorization"] ?? "";
+  const apiKeyHeader = req.headers["x-api-key"] ?? "";
+  const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const token = bearerToken || (typeof apiKeyHeader === "string" ? apiKeyHeader : "");
+
+  if (!token) return { authorized: false };
+
+  if (options.statsApiKey && token === options.statsApiKey) {
+    return { authorized: true };
+  }
+
+  if (options.clientApiKeys) {
+    for (const [hostname, key] of Object.entries(options.clientApiKeys)) {
+      if (token === key) {
+        return { authorized: true, clientHostname: hostname };
+      }
+    }
+  }
+
+  return { authorized: false };
 }
 
 class RateLimiter {
@@ -193,15 +223,11 @@ export function createRenderServer(
     }
 
     if (parsed.pathname === "/stats" && req.method === "GET") {
-      if (options.statsApiKey) {
-        const auth = req.headers["authorization"] ?? "";
-        const apiKeyHeader = req.headers["x-api-key"] ?? "";
-        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-        if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
-          res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
-          res.end(JSON.stringify({ error: "Unauthorized" }));
-          return;
-        }
+      const authResult = resolveAuth(req, options);
+      if (!authResult.authorized) {
+        res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
       }
 
       const clientIp =
@@ -220,7 +246,7 @@ export function createRenderServer(
         return;
       }
       const days = Math.max(1, parseInt(parsed.searchParams.get("days") ?? "30", 10));
-      const hostname = parsed.searchParams.get("hostname") ?? undefined;
+      const hostname = authResult.clientHostname ?? parsed.searchParams.get("hostname") ?? undefined;
       const events = await eventStore.list(10_000);
       const stats = computeStats(events, days, hostname);
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
@@ -285,15 +311,11 @@ export function createRenderServer(
     }
 
     if (parsed.pathname === "/hostnames" && req.method === "GET") {
-      if (options.statsApiKey) {
-        const auth = req.headers["authorization"] ?? "";
-        const apiKeyHeader = req.headers["x-api-key"] ?? "";
-        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-        if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
-          res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
-          res.end(JSON.stringify({ error: "Unauthorized" }));
-          return;
-        }
+      const authResult = resolveAuth(req, options);
+      if (!authResult.authorized) {
+        res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
       }
       if (!eventStore) {
         res.writeHead(503, { "content-type": "application/json", "access-control-allow-origin": "*" });
@@ -301,11 +323,14 @@ export function createRenderServer(
         return;
       }
       const allEvents = await eventStore.list(10_000);
-      const hostnames = [...new Set(
+      let hostnames = [...new Set(
         (allEvents as StoredEvent[]).flatMap((e) => {
           try { return [new URL(e.url ?? "").hostname]; } catch { return []; }
         })
       )].sort();
+      if (authResult.clientHostname) {
+        hostnames = hostnames.filter((h) => h === authResult.clientHostname);
+      }
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       res.end(JSON.stringify({ hostnames }));
       return;
@@ -322,15 +347,11 @@ export function createRenderServer(
     }
 
     if (parsed.pathname === "/stats/page" && req.method === "GET") {
-      if (options.statsApiKey) {
-        const auth = req.headers["authorization"] ?? "";
-        const apiKeyHeader = req.headers["x-api-key"] ?? "";
-        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-        if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
-          res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
-          res.end(JSON.stringify({ error: "Unauthorized" }));
-          return;
-        }
+      const authResult = resolveAuth(req, options);
+      if (!authResult.authorized) {
+        res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
       }
       if (!eventStore) {
         res.writeHead(503, { "content-type": "application/json", "access-control-allow-origin": "*" });
@@ -338,6 +359,20 @@ export function createRenderServer(
         return;
       }
       const pageUrl = parsed.searchParams.get("url");
+      if (authResult.clientHostname && pageUrl) {
+        try {
+          const requestedHostname = new URL(pageUrl).hostname;
+          if (requestedHostname !== authResult.clientHostname) {
+            res.writeHead(403, { "content-type": "application/json", "access-control-allow-origin": "*" });
+            res.end(JSON.stringify({ error: "Forbidden" }));
+            return;
+          }
+        } catch {
+          res.writeHead(400, { "content-type": "application/json", "access-control-allow-origin": "*" });
+          res.end(JSON.stringify({ error: "Invalid url parameter" }));
+          return;
+        }
+      }
       if (!pageUrl) {
         res.writeHead(400, { "content-type": "application/json", "access-control-allow-origin": "*" });
         res.end(JSON.stringify({ error: "Missing url parameter" }));

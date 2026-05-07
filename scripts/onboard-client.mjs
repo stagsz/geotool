@@ -9,6 +9,7 @@ const { values } = parseArgs({
     "upstream-url": { type: "string" },
     "render-service-url": { type: "string" },
     "events-api-key": { type: "string" },
+    "stats-api-key": { type: "string" },
   },
 });
 
@@ -21,7 +22,8 @@ if (!hostname || !upstreamUrl) {
   --hostname <domain>
   --upstream-url <url>
   [--render-service-url <url>]
-  [--events-api-key <key>]`
+  [--events-api-key <key>]
+  [--stats-api-key <key>]`
   );
   process.exit(1);
 }
@@ -64,3 +66,11 @@ console.log(`  3. Test with a spoofed GPTBot request:`);
 console.log(`     curl -s https://${hostname}/ \\`);
 console.log(`       -H "User-Agent: Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)" \\`);
 console.log(`       -H "x-forwarded-for: 74.7.175.130" -I`);
+
+if (values["stats-api-key"]) {
+  const statsApiKey = values["stats-api-key"];
+  console.log(`\nTo enable per-client data isolation, add this entry to CLIENT_API_KEYS on render-service:`);
+  console.log(`\n  Current CLIENT_API_KEYS: {"example.com":"existingkey"}`);
+  console.log(`  Add entry: {"example.com":"existingkey","${hostname}":"${statsApiKey}"}`);
+  console.log(`\n  Set it as an env var on your render-service deployment.`);
+}

@@ -219,6 +219,67 @@ describe("createRenderServer", () => {
     });
   });
 
+  describe("GET /stats — per-client key isolation", () => {
+    const ADMIN_KEY = "admin-key";
+    const CLIENT_KEY = "client-key-example";
+    const clientApiKeys = { "example.com": CLIENT_KEY };
+
+    const mixedEvents = [
+      { botId: "gptbot", url: "https://example.com/page", pageType: "product", timestamp: new Date().toISOString() },
+      { botId: "claudebot", url: "https://example.com/about", pageType: "about", timestamp: new Date().toISOString() },
+      { botId: "gptbot", url: "https://other.com/home", pageType: "landing", timestamp: new Date().toISOString() },
+    ];
+
+    it("per-client key returns only events for that hostname", async () => {
+      await startServer(undefined, makeEventStore(mixedEvents), {
+        statsApiKey: ADMIN_KEY,
+        clientApiKeys,
+      });
+      const res = await fetch(`http://localhost:${port}/stats`, {
+        headers: { authorization: `Bearer ${CLIENT_KEY}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { total: number };
+      expect(body.total).toBe(2);
+    });
+
+    it("global STATS_API_KEY returns all events", async () => {
+      await startServer(undefined, makeEventStore(mixedEvents), {
+        statsApiKey: ADMIN_KEY,
+        clientApiKeys,
+      });
+      const res = await fetch(`http://localhost:${port}/stats`, {
+        headers: { authorization: `Bearer ${ADMIN_KEY}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { total: number };
+      expect(body.total).toBe(3);
+    });
+
+    it("wrong token returns 401", async () => {
+      await startServer(undefined, makeEventStore(mixedEvents), {
+        statsApiKey: ADMIN_KEY,
+        clientApiKeys,
+      });
+      const res = await fetch(`http://localhost:${port}/stats`, {
+        headers: { authorization: "Bearer wrong-token" },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("per-client key + /stats/page for URL on different hostname returns 403", async () => {
+      await startServer(undefined, makeEventStore(mixedEvents), {
+        statsApiKey: ADMIN_KEY,
+        clientApiKeys,
+      });
+      const res = await fetch(
+        `http://localhost:${port}/stats/page?url=${encodeURIComponent("https://other.com/home")}`,
+        { headers: { authorization: `Bearer ${CLIENT_KEY}` } }
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
   describe("GET /stats — rate limiting", () => {
     it("returns 429 after exceeding the request limit", async () => {
       await startServer(
