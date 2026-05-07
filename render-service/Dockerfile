@@ -9,15 +9,14 @@ ENV CHROME_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-COPY package*.json ./
-COPY render-service/package.json ./render-service/
+COPY package.json ./
+RUN npm install
 
-RUN npm ci --workspace=render-service
+COPY src/ ./src/
+COPY tsconfig.json ./
 
-COPY render-service/ ./render-service/
-
-RUN npm run build --workspace=render-service
+RUN npm run build
 
 EXPOSE 3001
 
-CMD ["node", "render-service/dist/index.js"]
+CMD ["node", "dist/index.js"]
