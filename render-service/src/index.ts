@@ -7,11 +7,21 @@ import { EventStore } from "./event-store";
 
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
-function getRedisConnection(): { host: string; port: number } {
+interface RedisConnection {
+  host: string;
+  port: number;
+  password?: string;
+}
+
+function getRedisConnection(): RedisConnection {
   const url = process.env.REDIS_URL;
   if (url) {
     const parsed = new URL(url);
-    return { host: parsed.hostname, port: parseInt(parsed.port || "6379", 10) };
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port || "6379", 10),
+      ...(parsed.password ? { password: decodeURIComponent(parsed.password) } : {}),
+    };
   }
   return {
     host: process.env.REDIS_HOST ?? "localhost",

@@ -16,9 +16,9 @@ async function captureEtag(url: string, cache: RenderCache): Promise<void> {
 
 export class RenderQueue {
   private readonly queue: Queue;
-  private readonly connection: { host: string; port: number };
+  private readonly connection: { host: string; port: number; password?: string };
 
-  constructor(connection: { host: string; port: number }) {
+  constructor(connection: { host: string; port: number; password?: string }) {
     this.connection = connection;
     this.queue = new Queue(QUEUE_NAME, { connection });
   }
