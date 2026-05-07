@@ -10,7 +10,7 @@ interface SparklineProps {
 function Sparkline({ data }: SparklineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
-  const HEIGHT = 80;
+  const HEIGHT = 130;
   const PAD_LEFT = 42;
   const PAD_RIGHT = 16;
   const PAD_TOP = 8;
@@ -95,7 +95,7 @@ function Sparkline({ data }: SparklineProps) {
               y1={gy}
               x2={PAD_LEFT + chartW}
               y2={gy}
-              stroke="#1e2333"
+              stroke="#2a2f47"
               strokeWidth="1"
             />
           );
@@ -136,7 +136,7 @@ function Sparkline({ data }: SparklineProps) {
           y={yTickY}
           textAnchor="end"
           dominantBaseline="hanging"
-          fill="#3f4460"
+          fill="#6b7194"
           fontSize="10"
           fontFamily="IBM Plex Mono, monospace"
         >
@@ -147,7 +147,7 @@ function Sparkline({ data }: SparklineProps) {
           y={yZeroY}
           textAnchor="end"
           dominantBaseline="auto"
-          fill="#3f4460"
+          fill="#6b7194"
           fontSize="10"
           fontFamily="IBM Plex Mono, monospace"
         >
@@ -159,7 +159,7 @@ function Sparkline({ data }: SparklineProps) {
           x={pts[0].x}
           y={HEIGHT - 4}
           textAnchor="start"
-          fill="#3f4460"
+          fill="#6b7194"
           fontSize="10"
           fontFamily="IBM Plex Mono, monospace"
         >
@@ -170,7 +170,7 @@ function Sparkline({ data }: SparklineProps) {
             x={pts[pts.length - 1].x}
             y={HEIGHT - 4}
             textAnchor="end"
-            fill="#3f4460"
+            fill="#6b7194"
             fontSize="10"
             fontFamily="IBM Plex Mono, monospace"
           >

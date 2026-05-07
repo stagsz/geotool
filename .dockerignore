@@ -1,0 +1,14 @@
+node_modules
+*/node_modules
+dist
+*/dist
+.env
+*.env
+proxy-core
+data-layer
+dashboard
+evals
+*.md
+.git
+.omc
+scripts

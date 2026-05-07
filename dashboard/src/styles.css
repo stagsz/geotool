@@ -5,14 +5,14 @@
   --bg-base:      #0c0e14;
   --bg-surface:   #11141d;
   --bg-elevated:  #181c28;
-  --bg-hover:     #1e2333;
+  --bg-hover:     #252b40;
 
   --border:       #232840;
   --border-soft:  #1a1e2e;
 
   --text-primary:   #e8eaf2;
-  --text-secondary: #7a7f9a;
-  --text-muted:     #3f4460;
+  --text-secondary: #9ba0bc;
+  --text-muted:     #6b7194;
 
   --accent:        #00e87a;
   --accent-dim:    rgba(0, 232, 122, 0.12);
