@@ -3,11 +3,13 @@ import { ContentTransformEngine } from "./content-transform";
 import { updateIpRegistries } from "./bot-detection/ip-updater";
 import { fetchRendered } from "./render-client";
 import { getClientConfig } from "./client-registry";
+import { RateLimiter } from "./rate-limiter";
 
 export interface Env {
   BOT_REGISTRY: KVNamespace;
   CLIENT_REGISTRY: KVNamespace;
   RENDER_CACHE: KVNamespace;
+  RATE_LIMIT_KV?: KVNamespace;
   RENDER_SERVICE_URL: string;
   UPSTREAM_URL: string;
   EVENTS_API_KEY?: string;
@@ -38,6 +40,17 @@ export default {
       const token = request.headers.get("X-Proxy-Token");
       if (token !== env.PROXY_TOKEN) {
         return new Response("Unauthorized", { status: 401 });
+      }
+    }
+
+    if (env.RATE_LIMIT_KV) {
+      const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+      const limiter = new RateLimiter(env.RATE_LIMIT_KV);
+      if (!(await limiter.isAllowed(ip))) {
+        return new Response("Too Many Requests", {
+          status: 429,
+          headers: { "Retry-After": "60" },
+        });
       }
     }
 
