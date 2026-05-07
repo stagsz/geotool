@@ -212,7 +212,8 @@ export function createRenderServer(
       return;
     }
 
-    if (parsed.pathname === "/stats" && req.method === "OPTIONS") {
+    const CORS_PATHS = new Set(["/stats", "/hostnames", "/stats/page"]);
+    if (req.method === "OPTIONS" && CORS_PATHS.has(parsed.pathname)) {
       res.writeHead(204, {
         "access-control-allow-origin": "*",
         "access-control-allow-methods": "GET, OPTIONS",
@@ -300,16 +301,6 @@ export function createRenderServer(
       return;
     }
 
-    if (parsed.pathname === "/hostnames" && req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, OPTIONS",
-        "access-control-allow-headers": "authorization, x-api-key",
-      });
-      res.end();
-      return;
-    }
-
     if (parsed.pathname === "/hostnames" && req.method === "GET") {
       const authResult = resolveAuth(req, options);
       if (!authResult.authorized) {
@@ -333,16 +324,6 @@ export function createRenderServer(
       }
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       res.end(JSON.stringify({ hostnames }));
-      return;
-    }
-
-    if (parsed.pathname === "/stats/page" && req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, OPTIONS",
-        "access-control-allow-headers": "authorization, x-api-key",
-      });
-      res.end();
       return;
     }
 
@@ -384,29 +365,29 @@ export function createRenderServer(
       const filtered = rawPage.filter(
         (e) => e.url === pageUrl && typeof e.timestamp === "string" && e.timestamp >= pageSince
       );
-      const pdByBot: Record<string, number> = {};
-      const pdByStatus: Record<string, number> = {};
-      const pdHourCount: Record<number, number> = {};
-      const pdDayCount: Record<string, number> = {};
+      const byBot: Record<string, number> = {};
+      const byStatus: Record<string, number> = {};
+      const hourCount: Record<number, number> = {};
+      const dayCount: Record<string, number> = {};
       for (const e of filtered) {
         const bot = e.botId ?? "unknown";
-        pdByBot[bot] = (pdByBot[bot] ?? 0) + 1;
+        byBot[bot] = (byBot[bot] ?? 0) + 1;
         const status = String(e.responseStatus ?? 0);
-        pdByStatus[status] = (pdByStatus[status] ?? 0) + 1;
+        byStatus[status] = (byStatus[status] ?? 0) + 1;
         if (e.timestamp) {
           const hour = new Date(e.timestamp).getUTCHours();
-          pdHourCount[hour] = (pdHourCount[hour] ?? 0) + 1;
+          hourCount[hour] = (hourCount[hour] ?? 0) + 1;
           const day = e.timestamp.slice(0, 10);
-          if (day) pdDayCount[day] = (pdDayCount[day] ?? 0) + 1;
+          if (day) dayCount[day] = (dayCount[day] ?? 0) + 1;
         }
       }
       const detail = {
         url: pageUrl,
         total: filtered.length,
-        byBot: pdByBot,
-        byStatus: pdByStatus,
-        byHour: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: pdHourCount[h] ?? 0 })),
-        byDay: Object.entries(pdDayCount)
+        byBot,
+        byStatus,
+        byHour: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: hourCount[h] ?? 0 })),
+        byDay: Object.entries(dayCount)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, count]) => ({ date, count })),
       };

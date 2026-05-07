@@ -27,8 +27,7 @@ export class AlertingEngine {
   constructor(options: AlertingOptions) {
     this.webhookUrl = options.webhookUrl;
     this.threshold = options.botHitsPerHourThreshold ?? 100;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.fetcher = options.fetcher ?? (globalThis as any).fetch;
+    this.fetcher = options.fetcher ?? fetch;
   }
 
   async check(events: unknown[]): Promise<void> {

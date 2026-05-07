@@ -1,0 +1,50 @@
+LLM Proxy — Updated Review (v2)
+Generated: 2026-05-07
+================================
+
+SCORECARD — CHANGES SINCE v1 FEEDBACK
+---------------------------------------
+
+✅ FIXED — Response Status panel added to the analytics dashboard.
+   Currently shows "No status data" as the existing hit predates the new
+   tracking, but will populate on new incoming requests.
+
+✅ FIXED — Hourly Activity panel added to the analytics dashboard.
+   Addresses the time-of-day / crawl burst visibility gap. No data yet
+   but the structure is in place.
+
+✅ FIXED — Top Pages now has a clickable arrow (›) next to each URL,
+   indicating drill-down capability has been added.
+
+STILL OPEN
+-----------
+
+⚠️ Header leakage on the worker [HIGH PRIORITY]
+   The canonical tag and og:url meta tag still point to baraband.se.
+   LLM crawlers will discover the real origin site through these headers.
+   They should be rewritten to the worker domain or removed entirely.
+
+⚠️ No access control on the worker URL
+   The worker URL (llm-proxy-core.staffan-greisz.workers.dev) is still
+   fully human-accessible and serving the live site. No bot user-agent
+   gating or secret token requirement detected. Regular users should be
+   rejected or redirected.
+
+⚠️ Bots panel is still flat
+   No breakdown by bot + page type combination yet. Would be useful to
+   see e.g. "GPTBot hit 5 product pages, 2 collection pages."
+
+⚠️ Hostname filter is still a free-text input
+   At scale this should be a dropdown populated from actual data.
+   Low priority at current scale.
+
+⚠️ No alerting system visible
+   No mechanism to notify on unusual crawl activity (e.g. volume spikes
+   or unknown new bots). Still requires manual dashboard checks.
+
+SUMMARY
+--------
+Good iteration — 3 of the dashboard gaps were addressed quickly.
+The most impactful remaining item is the header leakage in the worker,
+as it has real functional consequences for how LLMs understand and
+attribute site content. Recommend tackling that next before access control.
