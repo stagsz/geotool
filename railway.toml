@@ -2,7 +2,7 @@
 dockerfilePath = "render-service/Dockerfile"
 
 [deploy]
-startCommand = "node render-service/dist/index.js"
+startCommand = "node dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
