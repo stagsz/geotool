@@ -12,8 +12,8 @@ kv_namespaces = [
 crons = ["0 */6 * * *"]
 
 [vars]
-RENDER_SERVICE_URL = "https://geotool-production-4198.up.railway.app"
-UPSTREAM_URL = "https://baraband.se"
+RENDER_SERVICE_URL = "https://<your-render-service>.up.railway.app"
+UPSTREAM_URL = "https://<your-upstream-domain>"
 
 [build]
 command = ""

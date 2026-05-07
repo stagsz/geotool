@@ -11,6 +11,7 @@ export interface Env {
   RENDER_SERVICE_URL: string;
   UPSTREAM_URL: string;
   EVENTS_API_KEY?: string;
+  PROXY_TOKEN?: string;
 }
 
 export interface BotEvent {
@@ -32,6 +33,14 @@ export default {
     ctx: ExecutionContext
   ): Promise<Response> {
     const hostname = new URL(request.url).hostname;
+
+    if (hostname.endsWith(".workers.dev") && env.PROXY_TOKEN) {
+      const token = request.headers.get("X-Proxy-Token");
+      if (token !== env.PROXY_TOKEN) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+    }
+
     const clientConfig = await getClientConfig(hostname, env.CLIENT_REGISTRY);
     const upstreamUrl = clientConfig?.upstreamUrl ?? env.UPSTREAM_URL;
     const renderServiceUrl = clientConfig?.renderServiceUrl ?? env.RENDER_SERVICE_URL;
