@@ -34,6 +34,7 @@ interface StoredEvent {
   url?: string;
   pageType?: string;
   timestamp?: string;
+  responseStatus?: number;
 }
 
 interface StatsResponse {
@@ -41,6 +42,9 @@ interface StatsResponse {
   since: string;
   byBot: Record<string, number>;
   byPageType: Record<string, number>;
+  byBotAndPageType: Record<string, Record<string, number>>;
+  byHour: Array<{ hour: number; count: number }>;
+  byStatus: Record<string, number>;
   topPages: Array<{ url: string; count: number }>;
   byDay: Array<{ date: string; count: number }>;
 }
@@ -66,14 +70,30 @@ function computeStats(
 
   const byBot: Record<string, number> = {};
   const byPageType: Record<string, number> = {};
+  const byBotAndPageType: Record<string, Record<string, number>> = {};
+  const hourCount: Record<number, number> = {};
+  const byStatus: Record<string, number> = {};
   const pageCount: Record<string, number> = {};
   const dayCount: Record<string, number> = {};
 
   for (const e of events) {
     const bot = e.botId ?? "unknown";
     byBot[bot] = (byBot[bot] ?? 0) + 1;
+
     const pt = e.pageType ?? "unknown";
     byPageType[pt] = (byPageType[pt] ?? 0) + 1;
+
+    if (!byBotAndPageType[bot]) byBotAndPageType[bot] = {};
+    byBotAndPageType[bot][pt] = (byBotAndPageType[bot][pt] ?? 0) + 1;
+
+    if (e.timestamp) {
+      const hour = new Date(e.timestamp).getUTCHours();
+      hourCount[hour] = (hourCount[hour] ?? 0) + 1;
+    }
+
+    const status = String(e.responseStatus ?? 0);
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+
     if (e.url) pageCount[e.url] = (pageCount[e.url] ?? 0) + 1;
     const day = (e.timestamp ?? "").slice(0, 10);
     if (day) dayCount[day] = (dayCount[day] ?? 0) + 1;
@@ -84,6 +104,9 @@ function computeStats(
     since,
     byBot,
     byPageType,
+    byBotAndPageType,
+    byHour: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: hourCount[h] ?? 0 })),
+    byStatus,
     topPages: Object.entries(pageCount)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
@@ -248,6 +271,112 @@ export function createRenderServer(
         res.writeHead(400);
         res.end("Invalid JSON");
       }
+      return;
+    }
+
+    if (parsed.pathname === "/hostnames" && req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "access-control-allow-headers": "authorization, x-api-key",
+      });
+      res.end();
+      return;
+    }
+
+    if (parsed.pathname === "/hostnames" && req.method === "GET") {
+      if (options.statsApiKey) {
+        const auth = req.headers["authorization"] ?? "";
+        const apiKeyHeader = req.headers["x-api-key"] ?? "";
+        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
+          res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+      if (!eventStore) {
+        res.writeHead(503, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        res.end(JSON.stringify({ error: "Event store not available" }));
+        return;
+      }
+      const allEvents = await eventStore.list(10_000);
+      const hostnames = [...new Set(
+        (allEvents as StoredEvent[]).flatMap((e) => {
+          try { return [new URL(e.url ?? "").hostname]; } catch { return []; }
+        })
+      )].sort();
+      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+      res.end(JSON.stringify({ hostnames }));
+      return;
+    }
+
+    if (parsed.pathname === "/stats/page" && req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "access-control-allow-headers": "authorization, x-api-key",
+      });
+      res.end();
+      return;
+    }
+
+    if (parsed.pathname === "/stats/page" && req.method === "GET") {
+      if (options.statsApiKey) {
+        const auth = req.headers["authorization"] ?? "";
+        const apiKeyHeader = req.headers["x-api-key"] ?? "";
+        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
+          res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+      if (!eventStore) {
+        res.writeHead(503, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        res.end(JSON.stringify({ error: "Event store not available" }));
+        return;
+      }
+      const pageUrl = parsed.searchParams.get("url");
+      if (!pageUrl) {
+        res.writeHead(400, { "content-type": "application/json", "access-control-allow-origin": "*" });
+        res.end(JSON.stringify({ error: "Missing url parameter" }));
+        return;
+      }
+      const pageDays = Math.max(1, parseInt(parsed.searchParams.get("days") ?? "30", 10));
+      const pageSince = new Date(Date.now() - pageDays * 24 * 60 * 60 * 1000).toISOString();
+      const rawPage = (await eventStore.list(10_000)) as StoredEvent[];
+      const filtered = rawPage.filter(
+        (e) => e.url === pageUrl && typeof e.timestamp === "string" && e.timestamp >= pageSince
+      );
+      const pdByBot: Record<string, number> = {};
+      const pdByStatus: Record<string, number> = {};
+      const pdHourCount: Record<number, number> = {};
+      const pdDayCount: Record<string, number> = {};
+      for (const e of filtered) {
+        const bot = e.botId ?? "unknown";
+        pdByBot[bot] = (pdByBot[bot] ?? 0) + 1;
+        const status = String(e.responseStatus ?? 0);
+        pdByStatus[status] = (pdByStatus[status] ?? 0) + 1;
+        if (e.timestamp) {
+          const hour = new Date(e.timestamp).getUTCHours();
+          pdHourCount[hour] = (pdHourCount[hour] ?? 0) + 1;
+          const day = e.timestamp.slice(0, 10);
+          if (day) pdDayCount[day] = (pdDayCount[day] ?? 0) + 1;
+        }
+      }
+      const detail = {
+        url: pageUrl,
+        total: filtered.length,
+        byBot: pdByBot,
+        byStatus: pdByStatus,
+        byHour: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: pdHourCount[h] ?? 0 })),
+        byDay: Object.entries(pdDayCount)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, count]) => ({ date, count })),
+      };
+      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+      res.end(JSON.stringify(detail));
       return;
     }
 

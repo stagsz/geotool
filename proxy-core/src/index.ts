@@ -26,6 +26,7 @@ export interface BotEvent {
   timestamp: string;
   ip: string;
   fingerprint: string | null;
+  responseStatus?: number;
 }
 
 export default {
@@ -84,6 +85,7 @@ export default {
             timestamp: detection.timestamp,
             ip: detection.ip,
             fingerprint: detection.fingerprint,
+            responseStatus: 200,
           }, renderServiceUrl, eventsApiKey)
         );
         return new Response(rendered, {
@@ -118,6 +120,7 @@ export default {
         timestamp: detection.timestamp,
         ip: detection.ip,
         fingerprint: detection.fingerprint,
+        responseStatus: originResponse.status,
       };
       ctx.waitUntil(publishBotEvent(event, renderServiceUrl, eventsApiKey));
 

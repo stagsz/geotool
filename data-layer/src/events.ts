@@ -8,6 +8,7 @@ export interface BotHitEvent {
   timestamp: string;
   ip: string;
   fingerprint: string | null;
+  responseStatus?: number;
 }
 
 export interface CitationEvent {
