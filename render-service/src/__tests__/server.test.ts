@@ -123,6 +123,23 @@ describe("createRenderServer", () => {
     });
   });
 
+  describe("GET /stats — CORS", () => {
+    it("OPTIONS /stats returns 204 with CORS headers", async () => {
+      await startServer(undefined, makeEventStore());
+      const res = await fetch(`http://localhost:${port}/stats`, { method: "OPTIONS" });
+      expect(res.status).toBe(204);
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+    });
+
+    it("GET /stats includes Access-Control-Allow-Origin: * header", async () => {
+      await startServer(undefined, makeEventStore());
+      const res = await fetch(`http://localhost:${port}/stats`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    });
+  });
+
   describe("GET /stats", () => {
     const sampleEvents = [
       { botId: "gptbot", botName: "GPTBot", url: "https://example.com/products/a", pageType: "product", timestamp: new Date().toISOString() },

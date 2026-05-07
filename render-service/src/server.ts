@@ -159,13 +159,23 @@ export function createRenderServer(
       return;
     }
 
+    if (parsed.pathname === "/stats" && req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "access-control-allow-headers": "authorization, x-api-key",
+      });
+      res.end();
+      return;
+    }
+
     if (parsed.pathname === "/stats" && req.method === "GET") {
       if (options.statsApiKey) {
         const auth = req.headers["authorization"] ?? "";
         const apiKeyHeader = req.headers["x-api-key"] ?? "";
         const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
         if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
-          res.writeHead(401, { "content-type": "application/json" });
+          res.writeHead(401, { "content-type": "application/json", "access-control-allow-origin": "*" });
           res.end(JSON.stringify({ error: "Unauthorized" }));
           return;
         }
@@ -176,13 +186,13 @@ export function createRenderServer(
         req.socket.remoteAddress ??
         "unknown";
       if (!rateLimiter.isAllowed(clientIp, rateLimit.maxRequests, rateLimit.windowMs)) {
-        res.writeHead(429, { "content-type": "application/json" });
+        res.writeHead(429, { "content-type": "application/json", "access-control-allow-origin": "*" });
         res.end(JSON.stringify({ error: "Too Many Requests" }));
         return;
       }
 
       if (!eventStore) {
-        res.writeHead(503, { "content-type": "application/json" });
+        res.writeHead(503, { "content-type": "application/json", "access-control-allow-origin": "*" });
         res.end(JSON.stringify({ error: "Event store not available" }));
         return;
       }
@@ -190,7 +200,7 @@ export function createRenderServer(
       const hostname = parsed.searchParams.get("hostname") ?? undefined;
       const events = await eventStore.list(10_000);
       const stats = computeStats(events, days, hostname);
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       res.end(JSON.stringify(stats));
       return;
     }
