@@ -4,8 +4,11 @@ import type { RenderCache } from "./cache";
 import type { RenderQueue } from "./queue";
 import type { IEventStore } from "./event-store";
 
+const MAX_EVENTS_BODY = 1_048_576;
+
 export interface ServerOptions {
   statsApiKey?: string;
+  eventsApiKey?: string;
   statsRateLimit?: {
     maxRequests: number;
     windowMs: number;
@@ -193,12 +196,37 @@ export function createRenderServer(
     }
 
     if (parsed.pathname === "/events" && req.method === "POST") {
-      const body = await new Promise<string>((resolve, reject) => {
+      if (options.eventsApiKey) {
+        const auth = req.headers["authorization"] ?? "";
+        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (bearerToken !== options.eventsApiKey) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+
+      const body = await new Promise<string | null>((resolve, reject) => {
         const chunks: Buffer[] = [];
-        req.on("data", (c: Buffer) => chunks.push(c));
+        let totalBytes = 0;
+        req.on("data", (c: Buffer) => {
+          totalBytes += c.length;
+          if (totalBytes > MAX_EVENTS_BODY) {
+            resolve(null);
+            return;
+          }
+          chunks.push(c);
+        });
         req.on("end", () => resolve(Buffer.concat(chunks).toString()));
         req.on("error", reject);
       });
+
+      if (body === null) {
+        res.writeHead(413, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Payload Too Large" }));
+        return;
+      }
+
       try {
         const events = JSON.parse(body);
         if (Array.isArray(events) && eventStore) {

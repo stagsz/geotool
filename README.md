@@ -63,7 +63,7 @@ render-service (Railway)
 | `dashboard` | React (Vite) | Client-facing analytics UI — bot hits, page types, daily trend, top pages |
 | `evals` | Node.js | Binary pass/fail evaluation suite |
 
-![Repository structure](llm_proxy_repo_structure.svg)
+![Repository structure](llm_proxy_full_architecture.svg)
 
 ---
 
@@ -235,6 +235,12 @@ npx vitest run src/path/to/file.test.ts
 | `REDIS_PORT` | `6379` | Fallback port |
 | `PORT` | `3001` | HTTP server port |
 | `CHROME_PATH` | — | Chromium binary path (set in Dockerfile to `/usr/bin/chromium`) |
+| `STATS_API_KEY` | — | Bearer token required on `GET /stats`; unset = open (local dev) |
+| `EVENTS_API_KEY` | — | Bearer token required on `POST /events`; unset = open (local dev) |
+| `CLICKHOUSE_URL` | — | ClickHouse HTTP endpoint (e.g. `https://host:8443`); omit to skip ClickHouse forwarding |
+| `CLICKHOUSE_DATABASE` | — | ClickHouse database name |
+| `CLICKHOUSE_USER` | `default` | ClickHouse username |
+| `CLICKHOUSE_PASSWORD` | — | ClickHouse password |
 
 **proxy-core (`wrangler.toml`):**
 
@@ -306,5 +312,5 @@ In production, `cf-connecting-ip` takes precedence over `x-forwarded-for` — sp
 | 03 Content Transform | ✅ Done |
 | 04 Data Pipeline | ✅ Done |
 | 05 Dashboard | ✅ Done |
-| 06 Production Hardening | 🔲 Not started |
+| 06 Production Hardening | ✅ Done |
 | 07 First Client | 🔲 Not started |

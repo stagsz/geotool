@@ -7,6 +7,7 @@ export interface BotHitEvent {
   transformationApplied: boolean;
   timestamp: string;
   ip: string;
+  fingerprint: string | null;
 }
 
 export interface CitationEvent {

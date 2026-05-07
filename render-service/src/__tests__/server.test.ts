@@ -264,4 +264,68 @@ describe("createRenderServer", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe("POST /events — authentication", () => {
+    const KEY = "events-secret-key";
+
+    it("returns 401 when eventsApiKey is set and Authorization header is missing", async () => {
+      await startServer(undefined, undefined, { eventsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        body: JSON.stringify([]),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 401 when wrong Bearer token is provided", async () => {
+      await startServer(undefined, undefined, { eventsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        headers: { authorization: "Bearer wrong-key" },
+        body: JSON.stringify([]),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 204 when correct Bearer token is provided", async () => {
+      await startServer(undefined, undefined, { eventsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${KEY}` },
+        body: JSON.stringify([]),
+      });
+      expect(res.status).toBe(204);
+    });
+
+    it("returns 204 without auth when eventsApiKey is not configured", async () => {
+      await startServer();
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        body: JSON.stringify([]),
+      });
+      expect(res.status).toBe(204);
+    });
+  });
+
+  describe("POST /events — body size cap", () => {
+    it("returns 413 when body exceeds 1 MB", async () => {
+      await startServer();
+      const oversized = Buffer.alloc(1_048_577, "x");
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        body: oversized,
+      });
+      expect(res.status).toBe(413);
+    });
+
+    it("returns 400 for a body exactly at 1 MB (invalid JSON, not over limit)", async () => {
+      await startServer();
+      const atLimit = Buffer.alloc(1_048_576, "x");
+      const res = await fetch(`http://localhost:${port}/events`, {
+        method: "POST",
+        body: atLimit,
+      });
+      expect(res.status).toBe(400);
+    });
+  });
 });

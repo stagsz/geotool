@@ -64,6 +64,7 @@ async function main(): Promise<void> {
   const eventStore = buildEventStore(redis);
   const server = createRenderServer(cache, queue, fetch, eventStore, {
     statsApiKey: process.env.STATS_API_KEY,
+    eventsApiKey: process.env.EVENTS_API_KEY,
   });
   server.listen(PORT, () => {
     console.log(`[render-service] listening on port ${PORT}`);

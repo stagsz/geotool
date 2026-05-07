@@ -3,6 +3,7 @@ import { calculateConfidence, ConfidenceFactors } from "./confidence-scorer";
 import { isHoneypotRequest, HoneypotHit } from "./honeypot";
 import { isIpInCidr, KvStore } from "./ip-updater";
 import { verifyPtr } from "./ptr-verifier";
+import { analyzeBehavior, BehaviorSignal } from "./behavior-analyzer";
 
 export interface DetectionResult {
   isBot: boolean;
@@ -15,6 +16,7 @@ export interface DetectionResult {
   userAgent: string;
   fingerprint: string | null;
   timestamp: string;
+  behaviorSignals: BehaviorSignal[];
 }
 
 export class BotDetectionEngine {
@@ -46,6 +48,7 @@ export class BotDetectionEngine {
         userAgent: ua,
         fingerprint,
         timestamp,
+        behaviorSignals: [],
       };
     }
 
@@ -62,10 +65,12 @@ export class BotDetectionEngine {
         userAgent: ua,
         fingerprint,
         timestamp,
+        behaviorSignals: [],
       };
     }
 
     const profile = uaResult.botProfile;
+    const behavior = analyzeBehavior(request);
     const [ipInRange, ptrVerified] = await Promise.all([
       this.checkIpInRange(ip, profile.id),
       verifyPtr(ip, profile.expectedPtrDomain, this.fetcher),
@@ -75,7 +80,7 @@ export class BotDetectionEngine {
       uaMatch: true,
       ipInRange,
       ptrVerified,
-      behaviorNormal: true,
+      behaviorNormal: behavior.behaviorNormal,
     };
 
     const confidence = calculateConfidence(factors);
@@ -91,6 +96,7 @@ export class BotDetectionEngine {
       userAgent: ua,
       fingerprint,
       timestamp,
+      behaviorSignals: behavior.signals,
     };
   }
 

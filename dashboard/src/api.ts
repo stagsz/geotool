@@ -1,4 +1,6 @@
-const BASE_URL = "https://geotool-production-4198.up.railway.app";
+/// <reference types="vite/client" />
+const BASE_URL =
+  import.meta.env.VITE_API_URL ?? "https://geotool-production-4198.up.railway.app";
 
 export interface StatsResponse {
   total: number;
