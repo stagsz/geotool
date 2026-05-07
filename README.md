@@ -213,7 +213,7 @@ cd render-service && npm run build && npm start
 cd proxy-core && npm run dev
 ```
 
-Worker starts on `http://localhost:8787`, proxies to `https://baraband.se` by default.
+Worker starts on `http://localhost:8787`, proxies to the `UPSTREAM_URL` set in `wrangler.toml` by default.
 
 ### Tests and lint
 
@@ -266,6 +266,31 @@ npx vitest run src/path/to/file.test.ts
 | `RENDER_CACHE` | Reserved for edge-cached rendered pages |
 | `CLIENT_REGISTRY` | Per-hostname client config (upstreamUrl, renderServiceUrl) |
 | `RATE_LIMIT_KV` | Per-IP request counters (optional — rate limiting disabled if absent) |
+
+---
+
+## ClickHouse Setup
+
+ClickHouse is optional but enables durable raw log retention beyond the 10,000-entry Redis rolling window. When the four ClickHouse env vars are set on render-service, every inbound bot hit event is written to ClickHouse in addition to Redis. The Redis list then acts as a query cache only — the 10k cap no longer means data loss.
+
+### Create the table
+
+```bash
+clickhouse-client --database=YOUR_DB < render-service/schema.sql
+```
+
+The DDL uses `CREATE TABLE IF NOT EXISTS` so it is safe to re-run. No database prefix is baked into the schema — the target database is supplied via `--database` (or the `CLICKHOUSE_DATABASE` env var at runtime).
+
+### Required env vars
+
+Set these on render-service (see the Environment Variables table above):
+
+- `CLICKHOUSE_URL` — HTTP endpoint, e.g. `https://host:8443`
+- `CLICKHOUSE_DATABASE` — database name
+- `CLICKHOUSE_USER` — defaults to `default`
+- `CLICKHOUSE_PASSWORD`
+
+When all four are present, the `ClickHouseWriter` in `data-layer` activates automatically. Omit any one of them and ClickHouse forwarding is skipped silently — Redis-only mode remains fully functional.
 
 ---
 

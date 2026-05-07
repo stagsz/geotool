@@ -1,0 +1,40 @@
+LLM Proxy — Developer Feedback
+Generated: 2026-05-07
+===============================
+
+WORKER / PROXY LAYER
+---------------------
+1. Public accessibility: The worker URL (llm-proxy-core.staffan-greisz.workers.dev) is fully
+   public and human-accessible. The proxy should only respond to known LLM bot user-agents,
+   or require a secret token. Regular users should be rejected or redirected.
+
+2. Response header leakage: The proxied site leaks its origin through og:url (baraband.se)
+   and canonical tags. These headers should be rewritten or removed so crawlers don't
+   discover the real origin.
+
+3. No rate limiting or abuse protection: Nothing prevents someone from hammering the worker
+   endpoint, which would inflate Cloudflare Worker CPU costs and pollute analytics with
+   junk data. Add rate limiting per IP or user-agent.
+
+
+ARCHITECTURE / DATA
+--------------------
+9. No raw log retention: You're likely storing pre-aggregated counts, which means you can't
+   go back and ask new questions about historical data. Store raw request logs alongside
+   aggregates.
+
+10. No alerting: Everything is passive — you have to manually check the dashboard. Add
+    alerting for events like "GPTBot crawled 100+ pages in 1 hour" or "unknown new bot
+    detected."
+
+11. No multi-tenant support: If this becomes a service for multiple site owners, you'll need
+    authentication, per-user data isolation, and a self-service onboarding flow for new sites.
+
+SUMMARY
+-------
+The core concept is solid and working. The main gaps are:
+- Security around the proxy endpoint (public access, header leakage, no rate limiting)
+- Richer analytics dimensions (bot x page type, hourly trends, response codes, drill-downs)
+- Raw log retention for ad-hoc historical queries
+- Alerting for notable crawl events
+- Multi-tenant architecture for scaling beyond a single site
