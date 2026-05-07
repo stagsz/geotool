@@ -9,11 +9,11 @@ ENV CHROME_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-COPY render-service/package.json ./
+COPY package.json ./
 RUN npm install
 
-COPY render-service/src/ ./src/
-COPY render-service/tsconfig.json ./
+COPY src/ ./src/
+COPY tsconfig.json ./
 
 RUN npm run build
 
