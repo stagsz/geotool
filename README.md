@@ -12,8 +12,8 @@ It also records every crawler hit, what it saw, and what transformation was appl
 
 | Component | Runtime | URL |
 |---|---|---|
-| `proxy-core` | Cloudflare Workers (edge, global) | `llm-proxy-core.staffan-greisz.workers.dev` |
-| `render-service` | Node.js on Railway (EU West) | `geotool-production-4198.up.railway.app` |
+| `proxy-core` | Cloudflare Workers (edge, global) | `<your-worker>.workers.dev` |
+| `render-service` | Node.js on Railway (EU West) | `<your-render-service>.up.railway.app` |
 | Redis | Railway managed | internal to render-service |
 
 ---
@@ -289,7 +289,7 @@ Use the included script (reads the `CLIENT_REGISTRY` namespace ID from `proxy-co
 node scripts/onboard-client.mjs \
   --hostname client-domain.com \
   --upstream-url https://origin.client-domain.com \
-  --render-service-url https://geotool-production-4198.up.railway.app \
+  --render-service-url https://<your-render-service>.up.railway.app \
   --events-api-key <per-client-secret>
 ```
 
@@ -299,7 +299,7 @@ Or directly via wrangler:
 npx wrangler kv key put --remote \
   --namespace-id=<CLIENT_REGISTRY_ID> \
   "client-config:client-domain.com" \
-  '{"upstreamUrl":"https://origin.client-domain.com","renderServiceUrl":"https://geotool-production-4198.up.railway.app","eventsApiKey":"<secret>"}'
+  '{"upstreamUrl":"https://origin.client-domain.com","renderServiceUrl":"https://<your-render-service>.up.railway.app","eventsApiKey":"<secret>"}'
 ```
 
 Then point the client's DNS to the worker (Cloudflare for SaaS or worker route on their zone).
@@ -311,7 +311,7 @@ Then point the client's DNS to the worker (Cloudflare for SaaS or worker route o
 Spoof a GPTBot request with an IP in the published OpenAI CIDR range (UA=30pts + IP=40pts = 70pts, verified):
 
 ```powershell
-curl.exe -s https://llm-proxy-core.staffan-greisz.workers.dev/ `
+curl.exe -s https://<your-worker>.workers.dev/ `
   -H "User-Agent: Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)" `
   -H "x-forwarded-for: 74.7.175.130" -I
 ```
