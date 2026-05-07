@@ -60,7 +60,7 @@ render-service (Railway)
 | `proxy-core` | Cloudflare Workers | Bot detection + content transformation at the edge |
 | `render-service` | Node.js | JS pre-renderer (Puppeteer + BullMQ) + event store |
 | `data-layer` | Node.js | Analytics pipeline: EventPublisher, ClickHouseWriter, CitationTracker, AnomalyDetector |
-| `dashboard` | React | Client-facing analytics UI (in progress) |
+| `dashboard` | React (Vite) | Client-facing analytics UI — bot hits, page types, daily trend, top pages |
 | `evals` | Node.js | Binary pass/fail evaluation suite |
 
 ![Repository structure](llm_proxy_repo_structure.svg)
@@ -134,11 +134,10 @@ Every verified bot hit fires a non-blocking POST to `render-service/events`:
 }
 ```
 
-Events are stored as a Redis list (capped at 10,000 entries). The `/stats` endpoint aggregates them. Set `STATS_API_KEY` to require authentication; the endpoint is also rate-limited to 60 requests/minute per IP by default.
+Events are stored as a Redis list (capped at 10,000 entries). The `/stats` endpoint aggregates them.
 
 ```
 GET /stats?days=30&hostname=client.com
-Authorization: Bearer <STATS_API_KEY>
 
 {
   "total": 142,
@@ -151,6 +150,27 @@ Authorization: Bearer <STATS_API_KEY>
 ```
 
 ClickHouse is the intended long-term store. The `data-layer` package has `ClickHouseWriter` ready — swap the Redis sink once a ClickHouse instance is provisioned.
+
+---
+
+## Dashboard
+
+A React/Vite app that reads from `/stats` and visualises bot activity for a client.
+
+```bash
+cd dashboard && npm run dev   # http://localhost:5173
+```
+
+**Features:**
+- Total hit count, since date
+- Bot breakdown (GPTBot, ClaudeBot, PerplexityBot, etc.)
+- Page type breakdown (product, blog, landing…)
+- Daily trend sparkline (SVG area chart)
+- Top 10 crawled pages with relative bar
+- Hostname filter + days selector (7 / 14 / 30 / 90)
+- Dark theme, IBM Plex Mono for data, IBM Plex Sans for labels
+
+The `RENDER_SERVICE_URL` constant in `dashboard/src/api.ts` points to the Railway endpoint. For a production multi-tenant deployment, replace this with an authenticated proxy that scopes stats to the logged-in client.
 
 ---
 
@@ -215,11 +235,6 @@ npx vitest run src/path/to/file.test.ts
 | `REDIS_PORT` | `6379` | Fallback port |
 | `PORT` | `3001` | HTTP server port |
 | `CHROME_PATH` | — | Chromium binary path (set in Dockerfile to `/usr/bin/chromium`) |
-| `STATS_API_KEY` | — | If set, `/stats` requires `Authorization: Bearer <key>` or `X-Api-Key: <key>`. Unset = open (dev/internal use only) |
-| `CLICKHOUSE_URL` | — | ClickHouse HTTP endpoint (e.g. `https://host:8443`). When set alongside `CLICKHOUSE_DATABASE`, events are dual-written to ClickHouse in addition to Redis |
-| `CLICKHOUSE_DATABASE` | — | ClickHouse database name for bot event storage |
-| `CLICKHOUSE_USER` | `default` | ClickHouse username |
-| `CLICKHOUSE_PASSWORD` | — | ClickHouse password |
 
 **proxy-core (`wrangler.toml`):**
 
@@ -290,6 +305,6 @@ In production, `cf-connecting-ip` takes precedence over `x-forwarded-for` — sp
 | 02 JS Pre-Renderer | ✅ Deployed on Railway |
 | 03 Content Transform | ✅ Done |
 | 04 Data Pipeline | ✅ Done |
-| 05 Dashboard | 🔲 Not started |
+| 05 Dashboard | ✅ Done |
 | 06 Production Hardening | 🔲 Not started |
 | 07 First Client | 🔲 Not started |
