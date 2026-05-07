@@ -57,27 +57,27 @@ describe("ContentTransformEngine.transformHtml", () => {
 
 describe("rewriteOriginUrls", () => {
   it("rewrites canonical href", () => {
-    const html = `<link rel="canonical" href="https://baraband.se/products/shirt">`;
-    expect(rewriteOriginUrls(html, "https://baraband.se", "https://proxy.example.com")).toBe(
+    const html = `<link rel="canonical" href="https://example.com/products/shirt">`;
+    expect(rewriteOriginUrls(html, "https://example.com", "https://proxy.example.com")).toBe(
       `<link rel="canonical" href="https://proxy.example.com/products/shirt">`
     );
   });
 
   it("rewrites og:url content", () => {
-    const html = `<meta property="og:url" content="https://baraband.se/products/shirt">`;
-    expect(rewriteOriginUrls(html, "https://baraband.se", "https://proxy.example.com")).toBe(
+    const html = `<meta property="og:url" content="https://example.com/products/shirt">`;
+    expect(rewriteOriginUrls(html, "https://example.com", "https://proxy.example.com")).toBe(
       `<meta property="og:url" content="https://proxy.example.com/products/shirt">`
     );
   });
 
   it("leaves other URLs untouched", () => {
-    const html = `<a href="https://baraband.se/page">link</a>`;
-    expect(rewriteOriginUrls(html, "https://baraband.se", "https://proxy.example.com")).toBe(html);
+    const html = `<a href="https://example.com/page">link</a>`;
+    expect(rewriteOriginUrls(html, "https://example.com", "https://proxy.example.com")).toBe(html);
   });
 
   it("is a no-op when origin and request base match", () => {
-    const html = `<link rel="canonical" href="https://baraband.se/products/shirt">`;
-    expect(rewriteOriginUrls(html, "https://baraband.se", "https://baraband.se")).toBe(html);
+    const html = `<link rel="canonical" href="https://example.com/products/shirt">`;
+    expect(rewriteOriginUrls(html, "https://example.com", "https://example.com")).toBe(html);
   });
 });
 

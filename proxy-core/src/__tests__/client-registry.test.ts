@@ -11,10 +11,10 @@ const makeKv = (data: Record<string, unknown>) => ({
 describe("getClientConfig", () => {
   it("returns config for a known hostname", async () => {
     const kv = makeKv({
-      "client-config:baraband.se": { upstreamUrl: "https://origin.baraband.se" },
+      "client-config:example.com": { upstreamUrl: "https://origin.example.com" },
     });
-    const config = await getClientConfig("baraband.se", kv);
-    expect(config).toEqual({ upstreamUrl: "https://origin.baraband.se" });
+    const config = await getClientConfig("example.com", kv);
+    expect(config).toEqual({ upstreamUrl: "https://origin.example.com" });
   });
 
   it("returns null for an unknown hostname", async () => {
