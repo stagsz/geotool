@@ -3,7 +3,9 @@ import { RenderCache } from "./cache";
 import { PageRenderer } from "./renderer";
 import { RenderQueue } from "./queue";
 import { createRenderServer } from "./server";
-import { EventStore } from "./event-store";
+import { EventStore, type IEventStore } from "./event-store";
+import { ClickHouseSink } from "./clickhouse-sink";
+import { CompositeEventStore } from "./composite-event-store";
 
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
@@ -29,6 +31,25 @@ function getRedisConnection(): RedisConnection {
   };
 }
 
+function buildEventStore(redis: Redis): IEventStore {
+  const base = new EventStore(redis);
+  const chUrl = process.env.CLICKHOUSE_URL;
+  const chDb = process.env.CLICKHOUSE_DATABASE;
+  if (chUrl && chDb) {
+    const sink = new ClickHouseSink({
+      url: chUrl,
+      database: chDb,
+      username: process.env.CLICKHOUSE_USER ?? "default",
+      password: process.env.CLICKHOUSE_PASSWORD ?? "",
+    });
+    process.on("SIGTERM", () => {
+      sink.close().then(() => process.exit(0)).catch(() => process.exit(1));
+    });
+    return new CompositeEventStore(base, sink);
+  }
+  return base;
+}
+
 async function main(): Promise<void> {
   const connection = getRedisConnection();
   const redis = new Redis(connection);
@@ -40,8 +61,10 @@ async function main(): Promise<void> {
   const queue = new RenderQueue(connection);
   queue.startWorker(renderer, cache);
 
-  const eventStore = new EventStore(redis);
-  const server = createRenderServer(cache, queue, fetch, eventStore);
+  const eventStore = buildEventStore(redis);
+  const server = createRenderServer(cache, queue, fetch, eventStore, {
+    statsApiKey: process.env.STATS_API_KEY,
+  });
   server.listen(PORT, () => {
     console.log(`[render-service] listening on port ${PORT}`);
   });

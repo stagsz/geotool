@@ -2,7 +2,28 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RenderCache } from "./cache";
 import type { RenderQueue } from "./queue";
-import type { EventStore } from "./event-store";
+import type { IEventStore } from "./event-store";
+
+export interface ServerOptions {
+  statsApiKey?: string;
+  statsRateLimit?: {
+    maxRequests: number;
+    windowMs: number;
+  };
+}
+
+class RateLimiter {
+  private readonly hits = new Map<string, number[]>();
+
+  isAllowed(key: string, maxRequests: number, windowMs: number): boolean {
+    const now = Date.now();
+    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < windowMs);
+    if (recent.length >= maxRequests) return false;
+    recent.push(now);
+    this.hits.set(key, recent);
+    return true;
+  }
+}
 
 interface StoredEvent {
   botId?: string | null;
@@ -91,8 +112,12 @@ export function createRenderServer(
   cache: RenderCache,
   queue: RenderQueue,
   fetcher: typeof fetch = fetch,
-  eventStore?: EventStore
+  eventStore?: IEventStore,
+  options: ServerOptions = {}
 ): ReturnType<typeof createServer> {
+  const rateLimiter = new RateLimiter();
+  const rateLimit = options.statsRateLimit ?? { maxRequests: 60, windowMs: 60_000 };
+
   return createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const parsed = new URL(req.url ?? "/", "http://localhost");
 
@@ -132,6 +157,27 @@ export function createRenderServer(
     }
 
     if (parsed.pathname === "/stats" && req.method === "GET") {
+      if (options.statsApiKey) {
+        const auth = req.headers["authorization"] ?? "";
+        const apiKeyHeader = req.headers["x-api-key"] ?? "";
+        const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+        if (bearerToken !== options.statsApiKey && apiKeyHeader !== options.statsApiKey) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+
+      const clientIp =
+        (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ??
+        req.socket.remoteAddress ??
+        "unknown";
+      if (!rateLimiter.isAllowed(clientIp, rateLimit.maxRequests, rateLimit.windowMs)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Too Many Requests" }));
+        return;
+      }
+
       if (!eventStore) {
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "Event store not available" }));

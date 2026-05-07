@@ -1,13 +1,18 @@
 const EVENTS_KEY = "bot-events";
 const MAX_EVENTS = 10_000;
 
+export interface IEventStore {
+  push(events: unknown[]): Promise<void>;
+  list(limit: number): Promise<unknown[]>;
+}
+
 export interface EventRedis {
   lpush(key: string, ...values: string[]): Promise<number>;
   ltrim(key: string, start: number, stop: number): Promise<string>;
   lrange(key: string, start: number, stop: number): Promise<string[]>;
 }
 
-export class EventStore {
+export class EventStore implements IEventStore {
   constructor(private readonly redis: EventRedis) {}
 
   async push(events: unknown[]): Promise<void> {

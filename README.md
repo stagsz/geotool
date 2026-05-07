@@ -26,11 +26,11 @@ AI Crawler hits client domain
         ▼
 Cloudflare Worker (proxy-core)
         │
-        ├─ Bot fingerprint check (UA + IP range + PTR DNS)
+        ├─ Bot fingerprint check (UA + IP range + PTR DNS + behaviour)
         │     Confidence score: UA=30pts  IP=40pts  PTR=20pts  Behaviour=10pts
         │     Threshold: ≥70 to be "verified"
         │
-        ├─ Honeypot? ──→ 200 OK + log hit (10 invisible trap paths)
+        ├─ Honeypot? ──→ 200 OK + log hit (39 exact trap paths + 4 prefix traps)
         │
         ├─ Verified bot
         │     ├─ Cache hit  ──→ pre-rendered HTML served instantly
@@ -47,7 +47,7 @@ Cloudflare Worker (proxy-core)
 render-service (Railway)
         ├─ /render   — check Redis cache → queue Puppeteer job → return HTML
         ├─ /events   — receive bot hit events → store in Redis list
-        ├─ /stats    — aggregate events by bot, page type, URL, day
+        ├─ /stats    — aggregate events by bot, page type, URL, day (auth + rate-limited)
         └─ /health   — readiness probe
 ```
 
@@ -63,6 +63,8 @@ render-service (Railway)
 | `dashboard` | React | Client-facing analytics UI (in progress) |
 | `evals` | Node.js | Binary pass/fail evaluation suite |
 
+![Repository structure](llm_proxy_repo_structure.svg)
+
 ---
 
 ## Bot Detection
@@ -74,10 +76,31 @@ Multi-factor confidence scoring on every request:
 | User-Agent match | 30 | Pattern-matched against known bot registry |
 | IP range | 40 | CIDR lookup in KV, auto-refreshed every 6h from vendor endpoints |
 | PTR record | 20 | Reverse DNS via Cloudflare DoH, verifies PTR ends with expected domain |
-| Behaviour | 10 | Reserved — always true currently |
+| Behaviour | 10 | Header consistency check — `false` if the request carries browser-only headers (`sec-fetch-*`, `image/webp` Accept) alongside a bot UA, indicating spoofing |
 | **Threshold** | **≥70** | Below this = unverified = passthrough |
 
+The behaviour check catches the most common spoofing pattern: a human browser claiming to be a known crawler. A real GPTBot request never sends `sec-fetch-mode` or an `image/avif` Accept header. When those appear, `behaviorNormal` is set to `false` and the 10 points are withheld. `DetectionResult` includes a `behaviorSignals` array for observability.
+
 JA3/JA4 TLS fingerprints are captured on every verified hit and logged with the event.
+
+---
+
+## Honeypot
+
+39 exact trap paths plus 4 prefix traps are checked before any bot scoring. A hit returns `200 OK` (no information leak) and logs a structured `HoneypotHit` event with IP, UA, path, and all headers.
+
+Exact path categories: LLM/AI dataset dumps (`/training-data/raw.jsonl`, `/llm-index.json`, `/fine-tune-data.jsonl`, `/embeddings/index.json`…), internal API endpoints (`/api/internal/debug`, `/api/v1/admin/export`…), credential/config traps (`/.env`, `/.git/config`, `/secrets.json`…), CMS traps (`/wp-login.php`, `/xmlrpc.php`…), data export traps (`/dump.sql`, `/exports/all-users.json`, `/backup/db-dump.sql`…).
+
+Prefix traps catch any sub-path under:
+
+| Prefix | Intent |
+|---|---|
+| `/.git/` | Git internals — no production site should expose these |
+| `/llm-data/` | Synthetic AI dataset trap |
+| `/ai-training/` | Synthetic AI training data trap |
+| `/internal-tools/` | Synthetic internal tooling trap |
+
+A determined crawler that maps `sitemap.xml` first will find none of these paths there — they are never linked from any legitimate content.
 
 ---
 
@@ -111,10 +134,11 @@ Every verified bot hit fires a non-blocking POST to `render-service/events`:
 }
 ```
 
-Events are stored as a Redis list (capped at 10,000 entries). The `/stats` endpoint aggregates them:
+Events are stored as a Redis list (capped at 10,000 entries). The `/stats` endpoint aggregates them. Set `STATS_API_KEY` to require authentication; the endpoint is also rate-limited to 60 requests/minute per IP by default.
 
 ```
 GET /stats?days=30&hostname=client.com
+Authorization: Bearer <STATS_API_KEY>
 
 {
   "total": 142,
@@ -191,6 +215,11 @@ npx vitest run src/path/to/file.test.ts
 | `REDIS_PORT` | `6379` | Fallback port |
 | `PORT` | `3001` | HTTP server port |
 | `CHROME_PATH` | — | Chromium binary path (set in Dockerfile to `/usr/bin/chromium`) |
+| `STATS_API_KEY` | — | If set, `/stats` requires `Authorization: Bearer <key>` or `X-Api-Key: <key>`. Unset = open (dev/internal use only) |
+| `CLICKHOUSE_URL` | — | ClickHouse HTTP endpoint (e.g. `https://host:8443`). When set alongside `CLICKHOUSE_DATABASE`, events are dual-written to ClickHouse in addition to Redis |
+| `CLICKHOUSE_DATABASE` | — | ClickHouse database name for bot event storage |
+| `CLICKHOUSE_USER` | `default` | ClickHouse username |
+| `CLICKHOUSE_PASSWORD` | — | ClickHouse password |
 
 **proxy-core (`wrangler.toml`):**
 
@@ -260,7 +289,7 @@ In production, `cf-connecting-ip` takes precedence over `x-forwarded-for` — sp
 | 01 Bot Detection | ✅ Done |
 | 02 JS Pre-Renderer | ✅ Deployed on Railway |
 | 03 Content Transform | ✅ Done |
-| 04 Data Pipeline | 🔄 Events wired, ClickHouse pending |
+| 04 Data Pipeline | ✅ Done |
 | 05 Dashboard | 🔲 Not started |
 | 06 Production Hardening | 🔲 Not started |
 | 07 First Client | 🔲 Not started |

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRenderServer } from "../server";
 import type { RenderCache } from "../cache";
 import type { RenderQueue } from "../queue";
+import type { ServerOptions } from "../server";
 
 const makeCache = () => ({
   get: vi.fn().mockResolvedValue(null),
@@ -30,12 +31,13 @@ describe("createRenderServer", () => {
     list: vi.fn().mockResolvedValue(events),
   });
 
-  const startServer = async (fetcher?: typeof fetch, eventStore?: { push: ReturnType<typeof vi.fn>; list?: ReturnType<typeof vi.fn> }) => {
+  const startServer = async (fetcher?: typeof fetch, eventStore?: { push: ReturnType<typeof vi.fn>; list?: ReturnType<typeof vi.fn> }, options?: ServerOptions) => {
     server = createRenderServer(
       cache as unknown as RenderCache,
       queue as unknown as RenderQueue,
       fetcher,
-      eventStore as never
+      eventStore as never,
+      options
     );
     port = await new Promise<number>((resolve) => {
       server.listen(0, () => resolve((server.address() as { port: number }).port));
@@ -157,6 +159,74 @@ describe("createRenderServer", () => {
       const res = await fetch(`http://localhost:${port}/stats?days=7`);
       const body = await res.json() as { total: number };
       expect(body.total).toBe(0);
+    });
+  });
+
+  describe("GET /stats — authentication", () => {
+    const KEY = "secret-key-abc";
+
+    it("returns 401 when API key required but Authorization header is missing", async () => {
+      await startServer(undefined, makeEventStore(), { statsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/stats`);
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 401 when wrong Bearer token is provided", async () => {
+      await startServer(undefined, makeEventStore(), { statsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/stats`, {
+        headers: { authorization: "Bearer wrong-key" },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 200 with correct Bearer token", async () => {
+      await startServer(undefined, makeEventStore(), { statsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/stats`, {
+        headers: { authorization: `Bearer ${KEY}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 200 with correct X-Api-Key header", async () => {
+      await startServer(undefined, makeEventStore(), { statsApiKey: KEY });
+      const res = await fetch(`http://localhost:${port}/stats`, {
+        headers: { "x-api-key": KEY },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("does not require auth when statsApiKey is not configured", async () => {
+      await startServer(undefined, makeEventStore());
+      const res = await fetch(`http://localhost:${port}/stats`);
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("GET /stats — rate limiting", () => {
+    it("returns 429 after exceeding the request limit", async () => {
+      await startServer(
+        undefined,
+        makeEventStore(),
+        { statsRateLimit: { maxRequests: 2, windowMs: 10_000 } }
+      );
+      const r1 = await fetch(`http://localhost:${port}/stats`);
+      const r2 = await fetch(`http://localhost:${port}/stats`);
+      const r3 = await fetch(`http://localhost:${port}/stats`);
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+      expect(r3.status).toBe(429);
+    });
+
+    it("rate limiter does not affect other endpoints", async () => {
+      await startServer(
+        undefined,
+        undefined,
+        { statsRateLimit: { maxRequests: 1, windowMs: 10_000 } }
+      );
+      const h1 = await fetch(`http://localhost:${port}/health`);
+      const h2 = await fetch(`http://localhost:${port}/health`);
+      expect(h1.status).toBe(200);
+      expect(h2.status).toBe(200);
     });
   });
 
