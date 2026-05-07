@@ -38,4 +38,15 @@ describe("getClientConfig", () => {
     await getClientConfig("example.com", kv);
     expect(kv.get).toHaveBeenCalledWith("client-config:example.com", "json");
   });
+
+  it("includes eventsApiKey when present", async () => {
+    const kv = makeKv({
+      "client-config:secure.com": {
+        upstreamUrl: "https://origin.secure.com",
+        eventsApiKey: "per-client-secret",
+      },
+    });
+    const config = await getClientConfig("secure.com", kv);
+    expect(config?.eventsApiKey).toBe("per-client-secret");
+  });
 });

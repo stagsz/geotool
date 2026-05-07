@@ -10,6 +10,7 @@ export interface Env {
   RENDER_CACHE: KVNamespace;
   RENDER_SERVICE_URL: string;
   UPSTREAM_URL: string;
+  EVENTS_API_KEY?: string;
 }
 
 export interface BotEvent {
@@ -34,6 +35,7 @@ export default {
     const clientConfig = await getClientConfig(hostname, env.CLIENT_REGISTRY);
     const upstreamUrl = clientConfig?.upstreamUrl ?? env.UPSTREAM_URL;
     const renderServiceUrl = clientConfig?.renderServiceUrl ?? env.RENDER_SERVICE_URL;
+    const eventsApiKey = clientConfig?.eventsApiKey ?? env.EVENTS_API_KEY;
 
     const botEngine = new BotDetectionEngine(env.BOT_REGISTRY);
     const detection = await botEngine.detect(request);
@@ -60,7 +62,7 @@ export default {
             timestamp: detection.timestamp,
             ip: detection.ip,
             fingerprint: detection.fingerprint,
-          }, renderServiceUrl)
+          }, renderServiceUrl, eventsApiKey)
         );
         return new Response(rendered, {
           status: 200,
@@ -95,7 +97,7 @@ export default {
         ip: detection.ip,
         fingerprint: detection.fingerprint,
       };
-      ctx.waitUntil(publishBotEvent(event, renderServiceUrl));
+      ctx.waitUntil(publishBotEvent(event, renderServiceUrl, eventsApiKey));
 
       return transformed;
     }
@@ -117,15 +119,18 @@ export default {
   },
 };
 
-async function publishBotEvent(
+export async function publishBotEvent(
   event: BotEvent,
-  eventsUrl?: string
+  eventsUrl?: string,
+  apiKey?: string
 ): Promise<void> {
   if (eventsUrl) {
     try {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
       await fetch(`${eventsUrl}/events`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify([event]),
         signal: AbortSignal.timeout(2000),
       });

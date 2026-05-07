@@ -3,6 +3,7 @@ import { KvStore } from "./bot-detection/ip-updater";
 export interface ClientConfig {
   upstreamUrl: string;
   renderServiceUrl?: string;
+  eventsApiKey?: string;
 }
 
 export async function getClientConfig(

@@ -249,6 +249,12 @@ npx vitest run src/path/to/file.test.ts
 | `RENDER_SERVICE_URL` | render-service base URL |
 | `UPSTREAM_URL` | Default origin for human passthrough |
 
+**proxy-core (wrangler secrets — `wrangler secret put <NAME>`):**
+
+| Secret | Description |
+|---|---|
+| `EVENTS_API_KEY` | Bearer token sent with every `/events` POST to render-service; must match `EVENTS_API_KEY` set on the render-service |
+
 **KV namespaces:**
 
 | Binding | Purpose |
@@ -273,15 +279,27 @@ git push origin master:main
 
 ## Multi-Tenancy
 
-The worker reads the request `host` header on every request and looks up `client-config:<hostname>` in `CLIENT_REGISTRY` KV. If a config exists, it overrides `UPSTREAM_URL` and `RENDER_SERVICE_URL` for that request.
+The worker reads the request `host` header on every request and looks up `client-config:<hostname>` in `CLIENT_REGISTRY` KV. If a config exists, it overrides `UPSTREAM_URL`, `RENDER_SERVICE_URL`, and `EVENTS_API_KEY` for that request.
 
-To onboard a client:
+### Onboarding a client
+
+Use the included script (reads the `CLIENT_REGISTRY` namespace ID from `proxy-core/wrangler.toml` automatically):
+
+```bash
+node scripts/onboard-client.mjs \
+  --hostname client-domain.com \
+  --upstream-url https://origin.client-domain.com \
+  --render-service-url https://geotool-production-4198.up.railway.app \
+  --events-api-key <per-client-secret>
+```
+
+Or directly via wrangler:
 
 ```bash
 npx wrangler kv key put --remote \
   --namespace-id=<CLIENT_REGISTRY_ID> \
   "client-config:client-domain.com" \
-  '{"upstreamUrl":"https://origin.client-domain.com","renderServiceUrl":"https://geotool-production-4198.up.railway.app"}'
+  '{"upstreamUrl":"https://origin.client-domain.com","renderServiceUrl":"https://geotool-production-4198.up.railway.app","eventsApiKey":"<secret>"}'
 ```
 
 Then point the client's DNS to the worker (Cloudflare for SaaS or worker route on their zone).
@@ -313,4 +331,4 @@ In production, `cf-connecting-ip` takes precedence over `x-forwarded-for` — sp
 | 04 Data Pipeline | ✅ Done |
 | 05 Dashboard | ✅ Done |
 | 06 Production Hardening | ✅ Done |
-| 07 First Client | 🔲 Not started |
+| 07 First Client | ✅ Done |
