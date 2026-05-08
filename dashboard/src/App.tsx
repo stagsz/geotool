@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchStats, fetchHostnames, fetchPageDetail, formatBotName, StatsResponse, PageDetailResponse } from "./api";
+import { fetchStats, fetchPageDetail, formatBotName, StatsResponse, PageDetailResponse } from "./api";
 import { useAuth } from "./lib/auth";
 import { isAccessGranted } from "./lib/access";
 import { PlanBadge } from "./components/PlanBadge";
@@ -473,8 +473,8 @@ export default function App() {
     const names = customers.map((c) => c.hostname);
     setHostnames(names);
     setHostnamesLoaded(true);
-    if (names.length > 0 && !hostname) {
-      setHostname(names[0]);
+    if (names.length > 0) {
+      setHostname((prev) => prev || names[0]);
     }
   }, [customers]);
 
