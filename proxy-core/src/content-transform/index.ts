@@ -15,15 +15,7 @@ export interface TransformResult {
 
 export function rewriteOriginUrls(html: string, originBase: string, requestBase: string): string {
   const esc = originBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return html
-    .replace(
-      new RegExp(`(<link[^>]+rel=["']canonical["'][^>]+href=["'])${esc}`, "gi"),
-      `$1${requestBase}`
-    )
-    .replace(
-      new RegExp(`(<meta[^>]+property=["']og:url["'][^>]+content=["'])${esc}`, "gi"),
-      `$1${requestBase}`
-    );
+  return html.replace(new RegExp(esc, "g"), requestBase);
 }
 
 export class ContentTransformEngine {
