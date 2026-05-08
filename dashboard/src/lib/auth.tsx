@@ -37,29 +37,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function loadCustomerData() {
-    const { data: rows } = await supabase.from("customers").select("*");
+    setLoading(true);
+    const { data: rows, error: custError } = await supabase.from("customers").select("*");
+    if (custError) {
+      console.error("loadCustomerData: customers fetch failed", custError);
+      setLoading(false);
+      return;
+    }
     const customerRows = (rows ?? []) as Customer[];
     setCustomers(customerRows);
 
     if (customerRows.length > 0) {
-      const { data: subRows } = await supabase
+      const { data: subRows, error: subError } = await supabase
         .from("subscriptions")
         .select("tier, status, current_period_end")
         .in("customer_id", customerRows.map((r) => r.id))
         .order("updated_at", { ascending: false })
         .limit(1);
-      setSubscription((subRows?.[0] as Subscription) ?? null);
+      if (subError) {
+        console.error("loadCustomerData: subscriptions fetch failed", subError);
+      } else {
+        setSubscription((subRows?.[0] as Subscription) ?? null);
+      }
     }
     setLoading(false);
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) loadCustomerData();
-      else setLoading(false);
-    });
-
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
@@ -70,7 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     });
-
     return () => authSub.unsubscribe();
   }, []);
 
