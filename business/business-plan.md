@@ -166,7 +166,7 @@ is secondary to fit. The first 10 customers teach you more than any market resea
 
 **Product readiness**
 - Self-serve onboarding fully functional: DNS change → first bot event visible in ≤15 min
-- Billing integrated (Stripe), free trial flow tested end-to-end
+- Billing integrated (Klarna), free trial flow tested end-to-end
 - Dashboard shows: top crawled pages, crawler identity, transformation log, citation score
 
 **Prospect list**
@@ -326,11 +326,11 @@ burn to $196/mo until first revenue lands.*
 
 | Tool | Purpose | Cost |
 |------|---------|------|
-| Stripe | Payment processing | 2.9% + $0.30/transaction (no monthly fee) |
+| Klarna | Payment processing (strong EU coverage, BNPL options) | ~1.7–2.49% + fixed fee by region (no monthly fee) |
 | Notion | Internal docs and SOPs | $0 (free tier) |
 | GitHub | Source control, CI | $0 (free tier) |
 | Google Workspace | Email for business domain | $6/mo |
-| **Business tools subtotal** | | **~$6/mo + Stripe fees** |
+| **Business tools subtotal** | | **~$6/mo + Klarna fees** |
 
 ### Hardware
 
@@ -350,7 +350,7 @@ Codespaces at $10–18/mo) is the first optional upgrade.*
 | Infrastructure | $71–111 | $200–350 |
 | Sales tools | $196–295 | $295 |
 | AI operations | $150–250 | $200–300 |
-| Business tools | $6 | $6 + ~$725 Stripe fees |
+| Business tools | $6 | $6 + ~$625 Klarna fees |
 | **Total burn** | **$423–662/mo** | **~$1,300/mo** |
 
 **Key insight:** At $25,000 MRR and $1,300/mo in costs, this business generates ~$23,700/mo
