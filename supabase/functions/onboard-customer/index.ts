@@ -50,7 +50,7 @@ serve(async (req) => {
   const cfClientId = `cus_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
 
   const kvRes = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_KV_NAMESPACE_ID}/values/${encodeURIComponent(hostname)}`,
+    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_KV_NAMESPACE_ID}/values/${encodeURIComponent(`client-config:${hostname}`)}`,
     {
       method: "PUT",
       headers: { Authorization: `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
