@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { fetchStats, fetchHostnames, fetchPageDetail, formatBotName, StatsResponse, PageDetailResponse } from "./api";
+import { useAuth } from "./lib/auth";
+import { isAccessGranted } from "./lib/access";
+import { PlanBadge } from "./components/PlanBadge";
+import { AccountMenu } from "./components/AccountMenu";
+import { PaywallOverlay } from "./components/PaywallOverlay";
 
 // ── SVG Sparkline ────────────────────────────────────────────────────────────
 
@@ -457,12 +462,21 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
+  const { customers, subscription } = useAuth();
+  const activeCustomer = customers.find((c) => c.onboarded_at != null) ?? customers[0];
+  const granted = isAccessGranted({
+    trialEndsAt: activeCustomer?.trial_ends_at ?? null,
+    subscriptionStatus: subscription?.status ?? null,
+  });
+
   useEffect(() => {
-    fetchHostnames().then((list) => {
-      setHostnames(list);
-      setHostnamesLoaded(true);
-    });
-  }, []);
+    const names = customers.map((c) => c.hostname);
+    setHostnames(names);
+    setHostnamesLoaded(true);
+    if (names.length > 0 && !hostname) {
+      setHostname(names[0]);
+    }
+  }, [customers]);
 
   // Debounce text input → hostname state (only used when dropdown not available)
   useEffect(() => {
@@ -562,6 +576,13 @@ export default function App() {
             {loading ? "Loading" : "Refresh"}
           </button>
 
+          <PlanBadge
+            trialEndsAt={activeCustomer?.trial_ends_at ?? null}
+            tier={subscription?.tier ?? null}
+            status={subscription?.status ?? null}
+          />
+          <AccountMenu />
+
           {sinceLabel && (
             <span className="header-since" aria-live="polite">
               since {sinceLabel}
@@ -621,6 +642,7 @@ export default function App() {
           </>
         )}
       </main>
+      {!granted && <PaywallOverlay />}
     </>
   );
 }

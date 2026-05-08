@@ -481,3 +481,28 @@ html, body {
   color: var(--text-muted);
   flex-shrink: 0;
 }
+
+/* ── Plan badge ─────────────────────────────────────────────── */
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background: rgba(0, 232, 122, 0.12);
+  color: #00e87a;
+  border: 1px solid rgba(0, 232, 122, 0.25);
+}
+.plan-badge.trial {
+  background: rgba(240, 160, 48, 0.12);
+  color: #f0a030;
+  border-color: rgba(240, 160, 48, 0.25);
+}
+.plan-badge.expired {
+  background: rgba(232, 80, 80, 0.12);
+  color: #e85050;
+  border-color: rgba(232, 80, 80, 0.25);
+}
