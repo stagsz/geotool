@@ -36,3 +36,7 @@ create policy "Users read their own subscriptions"
       where c.id = customer_id and c.user_id = auth.uid()
     )
   );
+
+create unique index on public.customers (cf_client_id);
+create index on public.customers (user_id);
+create index on public.subscriptions (customer_id);
