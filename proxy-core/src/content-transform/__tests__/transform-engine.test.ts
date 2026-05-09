@@ -70,7 +70,7 @@ describe("rewriteOriginUrls", () => {
     );
   });
 
-  it("rewrites origin URLs everywhere including links", () => {
+    it("rewrites origin URLs everywhere including links", () => {
     const html = `<a href="https://example.com/page">link</a>`;
     expect(rewriteOriginUrls(html, "https://example.com", "https://proxy.example.com")).toBe(
       `<a href="https://proxy.example.com/page">link</a>`
